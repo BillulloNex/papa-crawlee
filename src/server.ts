@@ -193,20 +193,31 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
 
         const page = await context.newPage();
 
-        // Intercept TikTok comment API responses
+        // Track all API URLs for debugging
+        const apiUrls: string[] = [];
+
+        // Intercept TikTok comment API responses — broad matching
         page.on('response', async (response) => {
             const url = response.url();
             try {
-                if (url.includes('/api/comment/list') || url.includes('/comment/list')) {
+                // Log all tiktok API calls for debugging
+                if (url.includes('tiktok.com') && (url.includes('/api/') || url.includes('/v1/') || url.includes('/v2/'))) {
+                    apiUrls.push(url.split('?')[0]); // log path without query params
+                }
+
+                // Broad matching for comment endpoints
+                if (url.includes('comment') && (url.includes('list') || url.includes('reply'))) {
+                    const contentType = response.headers()['content-type'] || '';
+                    if (!contentType.includes('json')) return;
                     const json = await response.json();
-                    const commentList = json.comments || json.data?.comments || [];
+                    const commentList = json.comments || json.data?.comments || json.comment_list || [];
                     for (const c of commentList) {
                         const parsed = parseComment(c);
                         if (parsed.id && parsed.text) {
                             comments.set(parsed.id, parsed);
                         }
                     }
-                    console.log(`[tiktok] intercepted ${commentList.length} comments (total: ${comments.size})`);
+                    console.log(`[tiktok] intercepted ${commentList.length} comments from ${url.split('?')[0]} (total: ${comments.size})`);
                 }
             } catch {
                 // non-JSON response or parse error — skip
@@ -290,6 +301,98 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
             }
 
             console.log(`[tiktok] scroll cycle — ${comments.size} comments (stale: ${staleCycles}/${MAX_STALE_CYCLES})`);
+        }
+
+        // Log all API URLs seen for debugging
+        const uniqueApiUrls = [...new Set(apiUrls)];
+        console.log(`[tiktok] API URLs seen: ${uniqueApiUrls.join(', ')}`);
+
+        // DOM fallback: extract comments from rendered page if API interception got nothing
+        if (comments.size === 0) {
+            console.log('[tiktok] API interception found no comments, trying DOM extraction...');
+            try {
+                const domComments = await page.evaluate(() => {
+                    const results: any[] = [];
+
+                    // Try multiple selectors for comment containers
+                    const selectors = [
+                        '[data-e2e="comment-level-1"]',
+                        '[class*="DivCommentItemContainer"]',
+                        '[class*="CommentItemContainer"]',
+                        '[class*="comment-item"]',
+                        '[class*="CommentListContainer"] > div',
+                    ];
+
+                    for (const selector of selectors) {
+                        const elements = document.querySelectorAll(selector);
+                        if (elements.length > 0) {
+                            elements.forEach((el, i) => {
+                                // Try to get comment text from various possible child selectors
+                                const textEl = el.querySelector('[data-e2e="comment-level-1"] span') ||
+                                    el.querySelector('[class*="CommentText"]') ||
+                                    el.querySelector('[class*="comment-text"]') ||
+                                    el.querySelector('p') ||
+                                    el.querySelector('span:not([class*="name"]):not([class*="time"])');
+
+                                const authorEl = el.querySelector('[data-e2e="comment-username-1"]') ||
+                                    el.querySelector('[class*="UserName"]') ||
+                                    el.querySelector('[class*="user-name"]') ||
+                                    el.querySelector('a[href*="/@"]');
+
+                                const text = textEl?.textContent?.trim() || '';
+                                const author = authorEl?.textContent?.trim() || '';
+
+                                if (text) {
+                                    results.push({
+                                        id: `dom-${i}`,
+                                        text,
+                                        author,
+                                        source: 'dom',
+                                        selector,
+                                    });
+                                }
+                            });
+                            if (results.length > 0) break; // stop if we found comments
+                        }
+                    }
+
+                    // If no structured comments found, try getting all text from the comment section
+                    if (results.length === 0) {
+                        const commentSection = document.querySelector('[class*="DivCommentListContainer"]') ||
+                            document.querySelector('[data-e2e="comment-list"]') ||
+                            document.querySelector('[class*="CommentList"]');
+                        if (commentSection) {
+                            results.push({
+                                id: 'dom-raw',
+                                text: commentSection.textContent?.slice(0, 5000) || '',
+                                author: '',
+                                source: 'dom-raw-section',
+                                selector: 'comment-section',
+                            });
+                        }
+                    }
+
+                    return results;
+                });
+
+                for (const dc of domComments) {
+                    comments.set(dc.id, {
+                        id: dc.id,
+                        text: dc.text,
+                        author: dc.author,
+                        authorNickname: '',
+                        authorAvatar: '',
+                        likes: 0,
+                        replyCount: 0,
+                        createTime: '',
+                        isAuthorLiked: false,
+                    });
+                }
+
+                console.log(`[tiktok] DOM extraction found ${domComments.length} comments`);
+            } catch (e: any) {
+                console.log(`[tiktok] DOM extraction failed: ${e.message}`);
+            }
         }
 
         await context.close();
