@@ -36,8 +36,8 @@ app.get('/', (_req, res) => {
             <div class="card">
                 <h3>TikTok Scrapers</h3>
                 <ul>
-                    <li><a href="/tiktok"><strong>/tiktok</strong></a> — Interactive Web UI for TikTok Scrapers (Posts & Comments)</li>
-                    <li><a href="/tiktok/posts?handle=openai&limit=20">/tiktok/posts?handle=openai&limit=20</a> — Scrape user posts / videos metadata</li>
+                    <li><a href="/tiktok"><strong>/tiktok</strong></a> — Interactive Web UI for TikTok Scrapers (Creator Posts & Community Reposts)</li>
+                    <li><a href="/tiktok/posts?handle=openai&limit=30">/tiktok/posts?handle=openai&limit=30</a> — Scrape categorized creator posts & community reposts</li>
                     <li><a href="/tiktok/comments?url=https://www.tiktok.com/@arc_journal/video/7402747839643667743">/tiktok/comments?url=...</a> — Scrape video comments</li>
                 </ul>
             </div>
@@ -73,7 +73,7 @@ app.get('/tiktok', (_req, res) => {
   .header { background: #1a1a1a; border-bottom: 1px solid #2a2a2a; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
   .header h1 { font-size: 18px; font-weight: 600; color: #fff; }
   .header .badge { background: #22c55e; color: #000; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
-  .container { max-width: 900px; margin: 28px auto; padding: 0 20px; }
+  .container { max-width: 960px; margin: 28px auto; padding: 0 20px; }
   
   .tabs { display: flex; gap: 8px; border-bottom: 1px solid #2a2a2a; margin-bottom: 20px; }
   .tab-btn { background: transparent; border: none; color: #888; font-size: 14px; font-weight: 600; padding: 10px 18px; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; }
@@ -121,15 +121,32 @@ app.get('/tiktok', (_req, res) => {
   .p-stat span { color: #fff; font-weight: 700; }
   .verified-badge { background: #3b82f6; color: #fff; border-radius: 50%; font-size: 11px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
 
+  /* Filter Toolbar */
+  .filter-toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+  .filter-btn { background: #161616; border: 1px solid #333; color: #aaa; font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 20px; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px; }
+  .filter-btn:hover { color: #fff; border-color: #555; background: #222; }
+  .filter-btn.active { background: #2563eb; color: #fff; border-color: #3b82f6; }
+  .filter-btn .badge-num { background: rgba(0,0,0,0.35); font-size: 11px; padding: 2px 6px; border-radius: 10px; }
+
   /* Posts Grid */
-  .posts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
+  .posts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; margin-top: 16px; }
   .post-card { background: #161616; border: 1px solid #262626; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; transition: transform 0.15s, border-color 0.15s; }
   .post-card:hover { transform: translateY(-2px); border-color: #3b82f6; }
   .post-cover-wrapper { position: relative; width: 100%; aspect-ratio: 9/16; background: #222; max-height: 280px; overflow: hidden; }
   .post-cover { width: 100%; height: 100%; object-fit: cover; }
   .post-duration { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.75); color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; }
-  .post-pinned { position: absolute; top: 8px; left: 8px; background: #ef4444; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+  
+  .badge-container { position: absolute; top: 8px; left: 8px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+  .badge-tag { font-size: 10px; font-weight: 700; padding: 3px 7px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.3px; }
+  .badge-pinned { background: #ef4444; color: #fff; }
+  .badge-creator { background: #059669; color: #fff; }
+  .badge-repost { background: #8b5cf6; color: #fff; }
+
   .post-body { padding: 12px 14px; display: flex; flex-direction: column; flex: 1; justify-content: space-between; }
+  .post-author-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 12px; }
+  .post-author-avatar { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; }
+  .post-author-name { color: #3b82f6; font-weight: 600; }
+  .post-type-label { font-size: 11px; color: #888; margin-left: auto; }
   .post-caption { font-size: 13px; color: #ddd; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 10px; }
   .post-date { font-size: 11px; color: #666; margin-bottom: 8px; }
   .post-stats { display: flex; justify-content: space-between; font-size: 12px; color: #888; border-top: 1px solid #222; padding-top: 8px; }
@@ -172,11 +189,11 @@ app.get('/tiktok', (_req, res) => {
 
 <div class="container">
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('postsTab', this)">📹 User Posts & Videos Scraper</button>
+    <button class="tab-btn active" onclick="switchTab('postsTab', this)">📹 Creator & Community Posts Scraper</button>
     <button class="tab-btn" onclick="switchTab('commentsTab', this)">💬 Video Comments Scraper</button>
   </div>
 
-  <!-- TAB 1: USER POSTS SCRAPER -->
+  <!-- TAB 1: USER & REPOST SCRAPER -->
   <div id="postsTab" class="tab-content active">
     <div class="card">
       <h2>Target TikTok Creator Handle</h2>
@@ -189,7 +206,7 @@ app.get('/tiktok', (_req, res) => {
       <div class="config-grid">
         <div class="config-item">
           <label>Max Videos to Scrape</label>
-          <input type="number" id="postLimit" value="30" min="5" max="200" />
+          <input type="number" id="postLimit" value="50" min="5" max="200" />
           <div class="suffix">videos (max 200)</div>
         </div>
         <div class="config-item">
@@ -202,7 +219,7 @@ app.get('/tiktok', (_req, res) => {
 
     <div class="actions">
       <button class="btn-run" id="runPostsBtn" onclick="runPostsScrape()">
-        <span class="icon">▶</span> Scrape Creator Posts
+        <span class="icon">▶</span> Scrape Posts & Reposts
       </button>
     </div>
 
@@ -250,6 +267,7 @@ app.get('/tiktok', (_req, res) => {
 <script>
 var currentPostsData = null;
 var currentCommentsData = null;
+var currentPostFilter = 'all';
 
 function switchTab(tabId, btn) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -272,12 +290,12 @@ function fmt(n) {
   return n.toString();
 }
 
-// ── Tab 1: User Posts Logic ──────────────────────────────────────────────────
+// ── Tab 1: User Posts & Reposts Logic ────────────────────────────────────────
 async function runPostsScrape() {
   var handleInput = document.getElementById('postHandle').value.trim();
   if (!handleInput) { alert('Please enter a TikTok handle or profile URL'); return; }
 
-  var limit = parseInt(document.getElementById('postLimit').value, 10) || 30;
+  var limit = parseInt(document.getElementById('postLimit').value, 10) || 50;
   var timeout = (parseInt(document.getElementById('postTimeout').value, 10) || 60) * 1000;
 
   var btn = document.getElementById('runPostsBtn');
@@ -285,9 +303,9 @@ async function runPostsScrape() {
   var resultsEl = document.getElementById('postsResults');
 
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner">⏳</span> Scraping profile...';
+  btn.innerHTML = '<span class="spinner">⏳</span> Scraping profile & reposts...';
   statusEl.className = 'status active';
-  statusEl.innerHTML = '<span class="spinner">⏳</span> Loading profile and fetching videos for <strong>' + esc(handleInput) + '</strong>...';
+  statusEl.innerHTML = '<span class="spinner">⏳</span> Loading profile, creator videos, and community reposts for <strong>' + esc(handleInput) + '</strong>...';
   resultsEl.className = 'results';
   resultsEl.innerHTML = '';
 
@@ -300,87 +318,135 @@ async function runPostsScrape() {
       statusEl.className = 'status active';
       statusEl.innerHTML = '❌ Error: ' + esc(data.error);
       btn.disabled = false;
-      btn.innerHTML = '<span class="icon">▶</span> Scrape Creator Posts';
+      btn.innerHTML = '<span class="icon">▶</span> Scrape Posts & Reposts';
       return;
     }
 
     currentPostsData = data;
-    var u = data.user || {};
-    var posts = data.posts || [];
-    
-    var html = '';
-    
-    // Profile Banner
-    html += '<div class="profile-banner">';
-    if (u.avatar) {
-      html += '<img class="profile-avatar" src="' + esc(u.avatar) + '" onerror="this.style.display=\\'none\\'" />';
-    }
-    html += '<div class="profile-info">';
-    html += '<div class="profile-name">' + esc(u.nickname || u.handle || 'Creator') + (u.verified ? ' <span class="verified-badge">✓</span>' : '') + '</div>';
-    html += '<div class="profile-handle">@' + esc(u.handle || '') + '</div>';
-    if (u.bio) html += '<div class="profile-bio">' + esc(u.bio) + '</div>';
-    html += '<div class="profile-stats">';
-    html += '<div class="p-stat">Followers: <span>' + fmt(u.followerCount) + '</span></div>';
-    html += '<div class="p-stat">Following: <span>' + fmt(u.followingCount) + '</span></div>';
-    html += '<div class="p-stat">Likes: <span>' + fmt(u.heartCount) + '</span></div>';
-    html += '<div class="p-stat">Total Videos: <span>' + fmt(u.videoCount) + '</span></div>';
-    html += '</div></div></div>';
-
-    // Summary bar & export
-    html += '<div class="summary-bar">';
-    html += '<div>Scraped <span class="count">' + posts.length + '</span> videos in ' + (data.durationMs / 1000).toFixed(1) + 's</div>';
-    html += '<div style="display:flex;gap:8px;">';
-    html += '<button class="export-btn" onclick="exportPostsJson()">Export JSON</button>';
-    html += '<button class="export-btn" onclick="exportPostsCsv()">Export CSV</button>';
-    html += '</div></div>';
-
-    // Posts Grid
-    html += '<div class="posts-grid">';
-    for (var i = 0; i < posts.length; i++) {
-      var p = posts[i];
-      var date = p.createTime ? new Date(p.createTime).toLocaleDateString() : '';
-      var stats = p.stats || {};
-      html += '<div class="post-card">';
-      
-      html += '<div class="post-cover-wrapper">';
-      if (p.coverUrl) {
-        html += '<img class="post-cover" src="' + esc(p.coverUrl) + '" loading="lazy" />';
-      }
-      if (p.isPinned) html += '<span class="post-pinned">PINNED</span>';
-      if (p.duration) html += '<span class="post-duration">' + p.duration + 's</span>';
-      html += '</div>';
-
-      html += '<div class="post-body">';
-      html += '<div>';
-      html += '<div class="post-caption">' + esc(p.caption || '(No caption)') + '</div>';
-      html += '<div class="post-date">📅 ' + date + '</div>';
-      html += '</div>';
-
-      html += '<div>';
-      html += '<div class="post-stats">';
-      html += '<div class="post-stat" title="Views">▶️ ' + fmt(stats.plays) + '</div>';
-      html += '<div class="post-stat" title="Likes">❤️ ' + fmt(stats.likes) + '</div>';
-      html += '<div class="post-stat" title="Comments">💬 ' + fmt(stats.comments) + '</div>';
-      html += '<div class="post-stat" title="Shares">↗️ ' + fmt(stats.shares) + '</div>';
-      html += '</div>';
-      html += '<a class="post-link" href="' + esc(p.url) + '" target="_blank" rel="noopener">Open on TikTok ↗</a>';
-      html += '</div>';
-
-      html += '</div></div>';
-    }
-    html += '</div>';
-
-    statusEl.className = 'status';
-    resultsEl.className = 'results active';
-    resultsEl.innerHTML = html;
+    currentPostFilter = 'all';
+    renderPostsUI();
 
   } catch (e) {
     statusEl.className = 'status active';
     statusEl.innerHTML = '❌ Request failed: ' + esc(e.message);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<span class="icon">▶</span> Scrape Creator Posts';
+    btn.innerHTML = '<span class="icon">▶</span> Scrape Posts & Reposts';
   }
+}
+
+function setPostFilter(filterType) {
+  currentPostFilter = filterType;
+  renderPostsUI();
+}
+
+function renderPostsUI() {
+  var data = currentPostsData;
+  if (!data) return;
+  var u = data.user || {};
+  var summary = data.summary || {};
+  var allPosts = data.posts || [];
+  var creatorPosts = data.creatorPosts || [];
+  var commReposts = data.communityReposts || [];
+  
+  var statusEl = document.getElementById('postsStatus');
+  var resultsEl = document.getElementById('postsResults');
+
+  var filteredPosts = allPosts;
+  if (currentPostFilter === 'creator') filteredPosts = creatorPosts;
+  if (currentPostFilter === 'repost') filteredPosts = commReposts;
+
+  var html = '';
+  
+  // Profile Banner
+  html += '<div class="profile-banner">';
+  if (u.avatar) {
+    html += '<img class="profile-avatar" src="' + esc(u.avatar) + '" onerror="this.style.display=\\'none\\'" />';
+  }
+  html += '<div class="profile-info">';
+  html += '<div class="profile-name">' + esc(u.nickname || u.handle || 'Creator') + (u.verified ? ' <span class="verified-badge">✓</span>' : '') + '</div>';
+  html += '<div class="profile-handle">@' + esc(u.handle || '') + '</div>';
+  if (u.bio) html += '<div class="profile-bio">' + esc(u.bio) + '</div>';
+  html += '<div class="profile-stats">';
+  html += '<div class="p-stat">Followers: <span>' + fmt(u.followerCount) + '</span></div>';
+  html += '<div class="p-stat">Following: <span>' + fmt(u.followingCount) + '</span></div>';
+  html += '<div class="p-stat">Likes: <span>' + fmt(u.heartCount) + '</span></div>';
+  html += '<div class="p-stat">Total Videos: <span>' + fmt(u.videoCount) + '</span></div>';
+  html += '</div></div></div>';
+
+  // Summary bar & export
+  html += '<div class="summary-bar">';
+  html += '<div>Scraped <span class="count">' + allPosts.length + '</span> total videos (<span style="color:#059669;font-weight:700">' + creatorPosts.length + ' creator</span> + <span style="color:#8b5cf6;font-weight:700">' + commReposts.length + ' reposts</span>) in ' + (data.durationMs / 1000).toFixed(1) + 's</div>';
+  html += '<div style="display:flex;gap:8px;">';
+  html += '<button class="export-btn" onclick="exportPostsJson()">Export JSON</button>';
+  html += '<button class="export-btn" onclick="exportPostsCsv()">Export CSV</button>';
+  html += '</div></div>';
+
+  // Filter Toolbar Tabs
+  html += '<div class="filter-toolbar">';
+  html += '<button class="filter-btn ' + (currentPostFilter === 'all' ? 'active' : '') + '" onclick="setPostFilter(\\'all\\')">🔘 All Posts <span class="badge-num">' + allPosts.length + '</span></button>';
+  html += '<button class="filter-btn ' + (currentPostFilter === 'creator' ? 'active' : '') + '" onclick="setPostFilter(\\'creator\\')">📹 Creator Uploads <span class="badge-num">' + creatorPosts.length + '</span></button>';
+  html += '<button class="filter-btn ' + (currentPostFilter === 'repost' ? 'active' : '') + '" onclick="setPostFilter(\\'repost\\')">🔁 Community Reposts & Mentions <span class="badge-num">' + commReposts.length + '</span></button>';
+  html += '</div>';
+
+  // Posts Grid
+  html += '<div class="posts-grid">';
+  for (var i = 0; i < filteredPosts.length; i++) {
+    var p = filteredPosts[i];
+    var isCreator = p.postType === 'creator_post';
+    var date = p.createTime ? new Date(p.createTime).toLocaleDateString() : '';
+    var stats = p.stats || {};
+    var auth = p.author || {};
+
+    html += '<div class="post-card">';
+    
+    html += '<div class="post-cover-wrapper">';
+    if (p.coverUrl) {
+      html += '<img class="post-cover" src="' + esc(p.coverUrl) + '" loading="lazy" />';
+    }
+    
+    html += '<div class="badge-container">';
+    if (p.isPinned) html += '<span class="badge-tag badge-pinned">📌 PINNED</span>';
+    if (isCreator) {
+      html += '<span class="badge-tag badge-creator">📹 CREATOR POST</span>';
+    } else {
+      html += '<span class="badge-tag badge-repost">🔁 COMMUNITY REPOST</span>';
+    }
+    html += '</div>';
+
+    if (p.duration) html += '<span class="post-duration">' + p.duration + 's</span>';
+    html += '</div>';
+
+    html += '<div class="post-body">';
+    html += '<div>';
+    
+    html += '<div class="post-author-row">';
+    if (auth.avatar) html += '<img class="post-author-avatar" src="' + esc(auth.avatar) + '" onerror="this.style.display=\\'none\\'" />';
+    html += '<span class="post-author-name">@' + esc(auth.handle || '') + '</span>';
+    html += '<span class="post-type-label">' + (isCreator ? 'Creator Video' : 'Repost / Tagged') + '</span>';
+    html += '</div>';
+
+    html += '<div class="post-caption">' + esc(p.caption || '(No caption)') + '</div>';
+    html += '<div class="post-date">📅 ' + date + '</div>';
+    html += '</div>';
+
+    html += '<div>';
+    html += '<div class="post-stats">';
+    html += '<div class="post-stat" title="Views">▶️ ' + fmt(stats.plays) + '</div>';
+    html += '<div class="post-stat" title="Likes">❤️ ' + fmt(stats.likes) + '</div>';
+    html += '<div class="post-stat" title="Comments">💬 ' + fmt(stats.comments) + '</div>';
+    html += '<div class="post-stat" title="Shares">↗️ ' + fmt(stats.shares) + '</div>';
+    html += '</div>';
+    html += '<a class="post-link" href="' + esc(p.url) + '" target="_blank" rel="noopener">Open on TikTok ↗</a>';
+    html += '</div>';
+
+    html += '</div></div>';
+  }
+  html += '</div>';
+
+  statusEl.className = 'status';
+  resultsEl.className = 'results active';
+  resultsEl.innerHTML = html;
 }
 
 function exportPostsJson() {
@@ -397,14 +463,17 @@ function exportPostsJson() {
 function exportPostsCsv() {
   if (!currentPostsData || !currentPostsData.posts) return;
   var posts = currentPostsData.posts;
-  var headers = ['id', 'url', 'caption', 'createTime', 'duration', 'likes', 'comments', 'shares', 'plays', 'bookmarks', 'isPinned', 'coverUrl'];
+  var headers = ['id', 'category', 'authorHandle', 'url', 'caption', 'createTime', 'duration', 'likes', 'comments', 'shares', 'plays', 'bookmarks', 'isPinned', 'coverUrl'];
   var rows = [headers.join(',')];
   
   for (var i = 0; i < posts.length; i++) {
     var p = posts[i];
     var stats = p.stats || {};
+    var auth = p.author || {};
     var row = [
       '"' + (p.id || '').replace(/"/g, '""') + '"',
+      '"' + (p.postType === 'creator_post' ? 'Creator Upload' : 'Community Repost') + '"',
+      '"' + (auth.handle || '').replace(/"/g, '""') + '"',
       '"' + (p.url || '').replace(/"/g, '""') + '"',
       '"' + (p.caption || '').replace(/"/g, '""') + '"',
       '"' + (p.createTime || '') + '"',
@@ -608,6 +677,8 @@ app.get('/zapier', async (req, res) => {
 
 // ── TikTok Interfaces ─────────────────────────────────────────────────────────
 
+export type TikTokPostType = 'creator_post' | 'community_repost';
+
 interface TikTokUser {
     id: string;
     handle: string;
@@ -629,6 +700,7 @@ interface TikTokPost {
     createTime: string;
     duration: number;
     coverUrl: string;
+    postType: TikTokPostType;
     stats: {
         likes: number;
         comments: number;
@@ -706,11 +778,25 @@ function parseVideoMeta(itemStruct: any): TikTokVideo {
     };
 }
 
-function parsePostItem(item: any): TikTokPost | null {
+function parsePostItem(
+    item: any,
+    defaultType: TikTokPostType = 'creator_post',
+    targetHandle?: string,
+): TikTokPost | null {
     if (!item || !item.id) return null;
     const authorUniqueId = item.author?.uniqueId || item.author?.unique_id || item.authorName || '';
     const desc = item.desc || item.title || '';
     
+    // Automatically determine postType
+    let postType: TikTokPostType = defaultType;
+    if (targetHandle && authorUniqueId) {
+        if (authorUniqueId.toLowerCase() === targetHandle.toLowerCase()) {
+            postType = 'creator_post';
+        } else {
+            postType = 'community_repost';
+        }
+    }
+
     // Extract hashtags from challenges or textExtra or desc regex
     const hashtags: string[] = [];
     if (Array.isArray(item.challenges)) {
@@ -725,11 +811,12 @@ function parsePostItem(item: any): TikTokPost | null {
 
     return {
         id: String(item.id),
-        url: `https://www.tiktok.com/@${authorUniqueId}/video/${item.id}`,
+        url: `https://www.tiktok.com/@${authorUniqueId || targetHandle || ''}/video/${item.id}`,
         caption: desc,
         createTime: item.createTime ? new Date(Number(item.createTime) * 1000).toISOString() : new Date().toISOString(),
         duration: Number(item.video?.duration || 0),
         coverUrl: item.video?.cover || item.video?.originCover || item.video?.dynamicCover || '',
+        postType,
         stats: {
             likes: Number(item.stats?.diggCount ?? item.stats?.digg_count ?? 0),
             comments: Number(item.stats?.commentCount ?? item.stats?.comment_count ?? 0),
@@ -738,7 +825,7 @@ function parsePostItem(item: any): TikTokPost | null {
             bookmarks: Number(item.stats?.collectCount ?? item.stats?.collect_count ?? 0),
         },
         author: {
-            handle: authorUniqueId,
+            handle: authorUniqueId || targetHandle || '',
             nickname: item.author?.nickname || '',
             avatar: item.author?.avatarThumb || item.author?.avatar_thumb?.url_list?.[0] || '',
             verified: !!(item.author?.verified || item.author?.customVerify),
@@ -773,7 +860,7 @@ function normalizeTikTokHandle(raw: string): string {
     return clean.replace(/^@/, '').trim();
 }
 
-// ── Scraper: TikTok User Profile & Posts ──────────────────────────────────────
+// ── Scraper: TikTok User Profile, Creator Posts & Community Reposts ──────────
 
 async function scrapeTikTokUserPosts(
     rawHandle: string,
@@ -781,18 +868,34 @@ async function scrapeTikTokUserPosts(
     timeoutMs = 60000,
 ): Promise<{
     user: TikTokUser | null;
+    summary: {
+        total: number;
+        creatorPostsCount: number;
+        communityRepostsCount: number;
+    };
     posts: TikTokPost[];
+    creatorPosts: TikTokPost[];
+    communityReposts: TikTokPost[];
     durationMs: number;
     error?: string;
 }> {
     const start = Date.now();
     const handle = normalizeTikTokHandle(rawHandle);
     if (!handle) {
-        return { user: null, posts: [], durationMs: 0, error: 'Invalid or empty TikTok handle' };
+        return {
+            user: null,
+            summary: { total: 0, creatorPostsCount: 0, communityRepostsCount: 0 },
+            posts: [],
+            creatorPosts: [],
+            communityReposts: [],
+            durationMs: 0,
+            error: 'Invalid or empty TikTok handle',
+        };
     }
 
     const targetUrl = `https://www.tiktok.com/@${handle}`;
-    const postsMap = new Map<string, TikTokPost>();
+    const creatorPostsMap = new Map<string, TikTokPost>();
+    const communityRepostsMap = new Map<string, TikTokPost>();
     let user: TikTokUser | null = null;
     let browser;
 
@@ -820,29 +923,30 @@ async function scrapeTikTokUserPosts(
 
         const page = await context.newPage();
 
-        // Use Playwright response listener to capture /api/post/item_list/ streams
+        // Listen for both /api/post/item_list (creator videos) and /api/repost/item_list (reposts/mentions)
         page.on('response', async (response) => {
             const url = response.url();
-            // Strictly match user uploaded posts API (ignore reposts, recommendations, stories, collections)
-            if (url.includes('tiktok.com') && url.includes('/api/post/item_list') && !url.includes('/repost/') && !url.includes('/favorite/')) {
+            if (url.includes('tiktok.com') && (url.includes('/api/post/item_list') || url.includes('/api/repost/item_list'))) {
                 try {
                     const json = await response.json();
                     const list = json.itemList || json.items || json.data?.itemList || [];
                     if (Array.isArray(list)) {
                         for (const item of list) {
                             const itemAuthor = (item.author?.uniqueId || item.author?.unique_id || '').toLowerCase();
-                            // Strictly filter to ensure only the target creator's videos are captured
-                            if (itemAuthor === handle.toLowerCase()) {
-                                const parsed = parsePostItem(item);
-                                if (parsed && parsed.id) {
-                                    postsMap.set(parsed.id, parsed);
+                            const isCreator = itemAuthor === handle.toLowerCase();
+                            const parsed = parsePostItem(item, isCreator ? 'creator_post' : 'community_repost', handle);
+                            if (parsed && parsed.id) {
+                                if (isCreator) {
+                                    creatorPostsMap.set(parsed.id, parsed);
+                                } else {
+                                    communityRepostsMap.set(parsed.id, parsed);
                                 }
                             }
                         }
-                        console.log(`[tiktok-posts] captured ${list.length} posts from item_list (total author posts: ${postsMap.size})`);
+                        console.log(`[tiktok-posts] captured: ${creatorPostsMap.size} creator posts, ${communityRepostsMap.size} community reposts`);
                     }
                 } catch (e: any) {
-                    // Ignore json parse errors for non-json responses
+                    // Ignore non-JSON streams
                 }
             }
         });
@@ -886,34 +990,33 @@ async function scrapeTikTokUserPosts(
                     console.log(`[tiktok-posts] extracted user @${user.handle} (${user.followerCount} followers)`);
                 }
 
-                // Initial batch of items from SSR (strictly matching handle)
+                // Initial batch of items from SSR
                 const rawItems = userDetail.itemList || userDetail.items || [];
                 if (Array.isArray(rawItems)) {
                     for (const item of rawItems) {
                         const itemAuthor = (item.author?.uniqueId || item.author?.unique_id || '').toLowerCase();
-                        if (!itemAuthor || itemAuthor === handle.toLowerCase()) {
-                            const parsed = parsePostItem(item);
-                            if (parsed && parsed.id) {
-                                postsMap.set(parsed.id, parsed);
-                            }
+                        const isCreator = !itemAuthor || itemAuthor === handle.toLowerCase();
+                        const parsed = parsePostItem(item, isCreator ? 'creator_post' : 'community_repost', handle);
+                        if (parsed && parsed.id) {
+                            if (isCreator) creatorPostsMap.set(parsed.id, parsed);
+                            else communityRepostsMap.set(parsed.id, parsed);
                         }
                     }
                 }
 
-                // Also check SIGI_STATE ItemModule with author filtering
+                // Also check SIGI_STATE ItemModule with categorization
                 if (rehydrationData.SIGI_STATE?.ItemModule) {
                     const itemModule = rehydrationData.SIGI_STATE.ItemModule;
                     for (const item of Object.values(itemModule) as any[]) {
                         const itemAuthor = (item.author?.uniqueId || item.author?.unique_id || '').toLowerCase();
-                        if (itemAuthor === handle.toLowerCase()) {
-                            const parsed = parsePostItem(item);
-                            if (parsed && parsed.id) {
-                                postsMap.set(parsed.id, parsed);
-                            }
+                        const isCreator = itemAuthor === handle.toLowerCase();
+                        const parsed = parsePostItem(item, isCreator ? 'creator_post' : 'community_repost', handle);
+                        if (parsed && parsed.id) {
+                            if (isCreator) creatorPostsMap.set(parsed.id, parsed);
+                            else communityRepostsMap.set(parsed.id, parsed);
                         }
                     }
                 }
-                console.log(`[tiktok-posts] posts from SSR for @${handle}: ${postsMap.size}`);
             }
         } catch (e: any) {
             console.log(`[tiktok-posts] rehydration parse failed: ${e.message}`);
@@ -924,8 +1027,8 @@ async function scrapeTikTokUserPosts(
         let staleCycles = 0;
         const MAX_STALE_CYCLES = 5;
 
-        while (Date.now() < deadline && postsMap.size < maxPosts && staleCycles < MAX_STALE_CYCLES) {
-            const prevCount = postsMap.size;
+        while (Date.now() < deadline && (creatorPostsMap.size + communityRepostsMap.size) < maxPosts && staleCycles < MAX_STALE_CYCLES) {
+            const prevTotal = creatorPostsMap.size + communityRepostsMap.size;
 
             // Scroll down smoothly
             await page.evaluate(() => {
@@ -934,7 +1037,7 @@ async function scrapeTikTokUserPosts(
 
             await page.waitForTimeout(2000);
 
-            // Supplementary DOM extraction for rendered video tiles matching this creator
+            // Supplementary DOM extraction for rendered video tiles
             try {
                 const domPosts = await page.evaluate((currentHandle) => {
                     const items: any[] = [];
@@ -945,33 +1048,39 @@ async function scrapeTikTokUserPosts(
                         const imgEl = el.querySelector('img');
                         const viewsEl = el.querySelector('[data-e2e="video-views"]');
                         const href = linkEl?.getAttribute('href') || '';
-                        if (href.toLowerCase().includes(targetPath) || href.startsWith('/video/')) {
-                            const idMatch = href.match(/\/video\/(\d+)/);
-                            if (idMatch && idMatch[1]) {
-                                const id = idMatch[1];
-                                const viewsText = viewsEl?.textContent?.trim() || '0';
-                                items.push({
-                                    id,
-                                    url: href.startsWith('http') ? href : `https://www.tiktok.com/@${currentHandle}/video/${id}`,
-                                    cover: imgEl?.src || '',
-                                    title: imgEl?.alt || linkEl?.getAttribute('title') || '',
-                                    viewsText,
-                                });
-                            }
+                        const idMatch = href.match(/\/video\/(\d+)/);
+                        if (idMatch && idMatch[1]) {
+                            const id = idMatch[1];
+                            const viewsText = viewsEl?.textContent?.trim() || '0';
+                            const isCreator = href.toLowerCase().includes(targetPath) || href.startsWith('/video/');
+                            let authorHandle = currentHandle;
+                            const matchAuthor = href.match(/@([\w.-]+)/);
+                            if (matchAuthor && matchAuthor[1]) authorHandle = matchAuthor[1];
+
+                            items.push({
+                                id,
+                                url: href.startsWith('http') ? href : `https://www.tiktok.com/@${authorHandle}/video/${id}`,
+                                cover: imgEl?.src || '',
+                                title: imgEl?.alt || linkEl?.getAttribute('title') || '',
+                                viewsText,
+                                isCreator,
+                                authorHandle,
+                            });
                         }
                     });
                     return items;
                 }, handle);
 
                 for (const dp of domPosts) {
-                    if (!postsMap.has(dp.id)) {
-                        postsMap.set(dp.id, {
+                    if (!creatorPostsMap.has(dp.id) && !communityRepostsMap.has(dp.id)) {
+                        const newPost: TikTokPost = {
                             id: dp.id,
                             url: dp.url,
                             caption: dp.title || '',
                             createTime: '',
                             duration: 0,
                             coverUrl: dp.cover || '',
+                            postType: dp.isCreator ? 'creator_post' : 'community_repost',
                             stats: {
                                 likes: 0,
                                 comments: 0,
@@ -980,20 +1089,22 @@ async function scrapeTikTokUserPosts(
                                 bookmarks: 0,
                             },
                             author: {
-                                handle: user?.handle || handle,
-                                nickname: user?.nickname || '',
-                                avatar: user?.avatar || '',
-                                verified: user?.verified || false,
+                                handle: dp.authorHandle || handle,
+                                nickname: dp.isCreator ? (user?.nickname || '') : '',
+                                avatar: dp.isCreator ? (user?.avatar || '') : '',
+                                verified: dp.isCreator ? (user?.verified || false) : false,
                             },
                             isPinned: false,
-                        });
+                        };
+                        if (dp.isCreator) creatorPostsMap.set(dp.id, newPost);
+                        else communityRepostsMap.set(dp.id, newPost);
                     }
                 }
             } catch {
                 // Ignore DOM parse errors
             }
 
-            if (postsMap.size === prevCount) {
+            if (creatorPostsMap.size + communityRepostsMap.size === prevTotal) {
                 staleCycles++;
                 // Nudge scroll to bottom
                 await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
@@ -1006,24 +1117,29 @@ async function scrapeTikTokUserPosts(
         await context.close();
     } catch (e: any) {
         console.error(`[tiktok-posts] error: ${e.message}`);
-        return {
-            user,
-            posts: Array.from(postsMap.values()).slice(0, maxPosts),
-            durationMs: Date.now() - start,
-            error: e.message,
-        };
     } finally {
         if (browser) await browser.close().catch(() => {});
     }
 
-    // Sort pinned posts first, then chronological
-    const postsArray = Array.from(postsMap.values())
-        .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0))
-        .slice(0, maxPosts);
+    // Sort creator posts: pinned first, then chronological
+    const sortedCreatorPosts = Array.from(creatorPostsMap.values())
+        .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0));
+
+    const sortedCommunityReposts = Array.from(communityRepostsMap.values());
+
+    // Combined list with creator uploads first, then community reposts
+    const combinedPosts = [...sortedCreatorPosts, ...sortedCommunityReposts].slice(0, maxPosts);
 
     return {
         user,
-        posts: postsArray,
+        summary: {
+            total: sortedCreatorPosts.length + sortedCommunityReposts.length,
+            creatorPostsCount: sortedCreatorPosts.length,
+            communityRepostsCount: sortedCommunityReposts.length,
+        },
+        posts: combinedPosts,
+        creatorPosts: sortedCreatorPosts,
+        communityReposts: sortedCommunityReposts,
         durationMs: Date.now() - start,
     };
 }
@@ -1046,8 +1162,10 @@ app.get('/tiktok/posts', async (req, res) => {
         const result = await scrapeTikTokUserPosts(handle, limit, timeout);
         res.json({
             user: result.user,
+            summary: result.summary,
             posts: result.posts,
-            totalScraped: result.posts.length,
+            creatorPosts: result.creatorPosts,
+            communityReposts: result.communityReposts,
             durationMs: result.durationMs,
             ...(result.error ? { error: result.error } : {}),
         });
