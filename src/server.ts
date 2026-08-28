@@ -176,7 +176,7 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
 
     try {
         browser = await chromium.launch({
-            headless: true,
+            headless: false, // Use headed mode with xvfb virtual display — much harder for TikTok to detect
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
