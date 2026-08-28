@@ -248,24 +248,41 @@ app.get('/tiktok', (_req, res) => {
 </div>
 
 <script>
+var currentPostsData = null;
+var currentCommentsData = null;
+
 function switchTab(tabId, btn) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
   btn.classList.add('active');
   document.getElementById(tabId).classList.add('active');
 }
 
+function esc(s) {
+  if (!s) return '';
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function fmt(n) {
+  if (!n && n !== 0) return '0';
+  if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n/1000).toFixed(1) + 'K';
+  return n.toString();
+}
+
 // ── Tab 1: User Posts Logic ──────────────────────────────────────────────────
 async function runPostsScrape() {
-  const handleInput = document.getElementById('postHandle').value.trim();
+  var handleInput = document.getElementById('postHandle').value.trim();
   if (!handleInput) { alert('Please enter a TikTok handle or profile URL'); return; }
 
-  const limit = parseInt(document.getElementById('postLimit').value, 10) || 30;
-  const timeout = (parseInt(document.getElementById('postTimeout').value, 10) || 60) * 1000;
+  var limit = parseInt(document.getElementById('postLimit').value, 10) || 30;
+  var timeout = (parseInt(document.getElementById('postTimeout').value, 10) || 60) * 1000;
 
-  const btn = document.getElementById('runPostsBtn');
-  const statusEl = document.getElementById('postsStatus');
-  const resultsEl = document.getElementById('postsResults');
+  var btn = document.getElementById('runPostsBtn');
+  var statusEl = document.getElementById('postsStatus');
+  var resultsEl = document.getElementById('postsResults');
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner">⏳</span> Scraping profile...';
@@ -275,9 +292,9 @@ async function runPostsScrape() {
   resultsEl.innerHTML = '';
 
   try {
-    const url = '/tiktok/posts?handle=' + encodeURIComponent(handleInput) + '&limit=' + limit + '&timeout=' + timeout;
-    const resp = await fetch(url);
-    const data = await resp.json();
+    var url = '/tiktok/posts?handle=' + encodeURIComponent(handleInput) + '&limit=' + limit + '&timeout=' + timeout;
+    var resp = await fetch(url);
+    var data = await resp.json();
 
     if (data.error) {
       statusEl.className = 'status active';
@@ -287,10 +304,11 @@ async function runPostsScrape() {
       return;
     }
 
-    const u = data.user || {};
-    const posts = data.posts || [];
+    currentPostsData = data;
+    var u = data.user || {};
+    var posts = data.posts || [];
     
-    let html = '';
+    var html = '';
     
     // Profile Banner
     html += '<div class="profile-banner">';
@@ -312,15 +330,16 @@ async function runPostsScrape() {
     html += '<div class="summary-bar">';
     html += '<div>Scraped <span class="count">' + posts.length + '</span> videos in ' + (data.durationMs / 1000).toFixed(1) + 's</div>';
     html += '<div style="display:flex;gap:8px;">';
-    html += '<button class="export-btn" onclick=\\'exportJson(' + JSON.stringify(JSON.stringify(data)) + ', "tiktok-posts-' + esc(u.handle || 'user') + '")\\'>Export JSON</button>';
-    html += '<button class="export-btn" onclick=\\'exportCsv(' + JSON.stringify(JSON.stringify(posts)) + ', "tiktok-posts-' + esc(u.handle || 'user') + '")\\'>Export CSV</button>';
+    html += '<button class="export-btn" onclick="exportPostsJson()">Export JSON</button>';
+    html += '<button class="export-btn" onclick="exportPostsCsv()">Export CSV</button>';
     html += '</div></div>';
 
     // Posts Grid
     html += '<div class="posts-grid">';
-    for (const p of posts) {
-      const date = p.createTime ? new Date(p.createTime).toLocaleDateString() : '';
-      const stats = p.stats || {};
+    for (var i = 0; i < posts.length; i++) {
+      var p = posts[i];
+      var date = p.createTime ? new Date(p.createTime).toLocaleDateString() : '';
+      var stats = p.stats || {};
       html += '<div class="post-card">';
       
       html += '<div class="post-cover-wrapper">';
@@ -364,11 +383,57 @@ async function runPostsScrape() {
   }
 }
 
+function exportPostsJson() {
+  if (!currentPostsData) return;
+  var jsonStr = JSON.stringify(currentPostsData, null, 2);
+  var blob = new Blob([jsonStr], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  var handle = currentPostsData.user ? currentPostsData.user.handle : 'user';
+  a.download = 'tiktok-posts-' + handle + '-' + Date.now() + '.json';
+  a.click();
+}
+
+function exportPostsCsv() {
+  if (!currentPostsData || !currentPostsData.posts) return;
+  var posts = currentPostsData.posts;
+  var headers = ['id', 'url', 'caption', 'createTime', 'duration', 'likes', 'comments', 'shares', 'plays', 'bookmarks', 'isPinned', 'coverUrl'];
+  var rows = [headers.join(',')];
+  
+  for (var i = 0; i < posts.length; i++) {
+    var p = posts[i];
+    var stats = p.stats || {};
+    var row = [
+      '"' + (p.id || '').replace(/"/g, '""') + '"',
+      '"' + (p.url || '').replace(/"/g, '""') + '"',
+      '"' + (p.caption || '').replace(/"/g, '""') + '"',
+      '"' + (p.createTime || '') + '"',
+      p.duration || 0,
+      stats.likes || 0,
+      stats.comments || 0,
+      stats.shares || 0,
+      stats.plays || 0,
+      stats.bookmarks || 0,
+      p.isPinned ? 'true' : 'false',
+      '"' + (p.coverUrl || '').replace(/"/g, '""') + '"'
+    ];
+    rows.push(row.join(','));
+  }
+  
+  var csvText = rows.join(String.fromCharCode(10));
+  var blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  var handle = currentPostsData.user ? currentPostsData.user.handle : 'user';
+  a.download = 'tiktok-posts-' + handle + '-' + Date.now() + '.csv';
+  a.click();
+}
+
 // ── Tab 2: Comments Logic ────────────────────────────────────────────────────
-let urlCounter = 1;
+var urlCounter = 1;
 function addUrl() {
   urlCounter++;
-  const row = document.createElement('div');
+  var row = document.createElement('div');
   row.className = 'url-row';
   row.innerHTML = '<span class="num">' + urlCounter + '</span><input type="text" placeholder="https://www.tiktok.com/@user/video/1234567890" /><button class="remove" onclick="removeUrl(this)" title="Remove">✕</button>';
   document.getElementById('urlList').appendChild(row);
@@ -376,23 +441,23 @@ function addUrl() {
 }
 
 function removeUrl(btn) {
-  const list = document.getElementById('urlList');
+  var list = document.getElementById('urlList');
   if (list.children.length > 1) {
     btn.closest('.url-row').remove();
-    list.querySelectorAll('.num').forEach((n, i) => n.textContent = i + 1);
+    list.querySelectorAll('.num').forEach(function(n, i) { n.textContent = i + 1; });
     urlCounter = list.children.length;
   }
 }
 
 async function runCommentsScrape() {
-  const inputs = document.querySelectorAll('#urlList input[type="text"]');
-  const urls = Array.from(inputs).map(i => i.value.trim()).filter(u => u.includes('tiktok.com'));
+  var inputs = document.querySelectorAll('#urlList input[type="text"]');
+  var urls = Array.from(inputs).map(function(i) { return i.value.trim(); }).filter(function(u) { return u.includes('tiktok.com'); });
   if (urls.length === 0) { alert('Enter at least one TikTok URL'); return; }
 
-  const timeout = parseInt(document.getElementById('commentTimeout').value) * 1000;
-  const btn = document.getElementById('runCommentsBtn');
-  const statusEl = document.getElementById('commentsStatus');
-  const resultsDiv = document.getElementById('commentsResults');
+  var timeout = parseInt(document.getElementById('commentTimeout').value) * 1000;
+  var btn = document.getElementById('runCommentsBtn');
+  var statusEl = document.getElementById('commentsStatus');
+  var resultsDiv = document.getElementById('commentsResults');
   
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner">⏳</span> Scraping...';
@@ -400,25 +465,26 @@ async function runCommentsScrape() {
   resultsDiv.className = 'results';
   resultsDiv.innerHTML = '';
 
-  for (let i = 0; i < urls.length; i++) {
-    const url = urls[i];
+  for (var i = 0; i < urls.length; i++) {
+    var url = urls[i];
     statusEl.innerHTML = '<span class="spinner">⏳</span> Scraping video ' + (i + 1) + ' of ' + urls.length + '... <br><code>' + esc(url) + '</code>';
 
     try {
-      const resp = await fetch('/tiktok/comments?url=' + encodeURIComponent(url) + '&timeout=' + timeout);
-      const data = await resp.json();
+      var resp = await fetch('/tiktok/comments?url=' + encodeURIComponent(url) + '&timeout=' + timeout);
+      var data = await resp.json();
 
       if (data.error) {
         resultsDiv.innerHTML += '<div class="card" style="border-color:#ef4444"><p style="color:#ef4444">Error: ' + esc(data.error) + '</p><p style="color:#666;font-size:12px">' + esc(url) + '</p></div>';
         continue;
       }
 
+      currentCommentsData = data;
       resultsDiv.className = 'results active';
-      const v = data.video || {};
-      const comments = data.comments || [];
-      const date = v.createTime ? new Date(v.createTime).toLocaleDateString() : '';
+      var v = data.video || {};
+      var comments = data.comments || [];
+      var date = v.createTime ? new Date(v.createTime).toLocaleDateString() : '';
 
-      let html = '<div class="video-card"><div class="video-meta"><div>';
+      var html = '<div class="video-card"><div class="video-meta"><div>';
       html += '<div class="author">' + esc(v.authorNickname || v.author || 'Unknown') + '</div>';
       html += '<div class="handle">@' + esc(v.author || '') + ' · ' + date + '</div>';
       html += '<div class="caption">' + esc(v.caption || '') + '</div>';
@@ -431,12 +497,13 @@ async function runCommentsScrape() {
       html += '</div></div>';
 
       html += '<div class="summary-bar"><div>Scraped <span class="count">' + comments.length + '</span> of ' + (data.totalComments || '?') + ' comments (' + (data.durationMs / 1000).toFixed(1) + 's)</div>';
-      html += '<button class="export-btn" onclick=\\'exportJson(' + JSON.stringify(JSON.stringify(data)) + ', "tiktok-comments")\\'>Export JSON</button></div>';
+      html += '<button class="export-btn" onclick="exportCommentsJson()">Export JSON</button></div>';
 
       html += '<div class="comments-list">';
-      for (const c of comments) {
+      for (var j = 0; j < comments.length; j++) {
+        var c = comments[j];
         if (!c.text && c.id === 'dom-raw') continue;
-        const cDate = c.createTime ? new Date(c.createTime).toLocaleDateString() : '';
+        var cDate = c.createTime ? new Date(c.createTime).toLocaleDateString() : '';
         html += '<div class="comment-item">';
         html += '<div class="comment-header">';
         if (c.authorAvatar) html += '<img class="comment-avatar" src="' + esc(c.authorAvatar) + '" onerror="this.style.display=\\'none\\'" />';
@@ -463,53 +530,15 @@ async function runCommentsScrape() {
   btn.innerHTML = '<span class="icon">▶</span> Scrape Comments';
 }
 
-function exportJson(jsonStr, filenamePrefix) {
-  const blob = new Blob([jsonStr], { type: 'application/json' });
-  const a = document.createElement('a');
+function exportCommentsJson() {
+  if (!currentCommentsData) return;
+  var jsonStr = JSON.stringify(currentCommentsData, null, 2);
+  var blob = new Blob([jsonStr], { type: 'application/json' });
+  var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = (filenamePrefix || 'tiktok-data') + '-' + Date.now() + '.json';
+  a.download = 'tiktok-comments-' + Date.now() + '.json';
   a.click();
 }
-
-function exportCsv(postsJsonStr, filenamePrefix) {
-  try {
-    const posts = JSON.parse(postsJsonStr);
-    if (!posts || posts.length === 0) { alert('No posts to export'); return; }
-    
-    const headers = ['id', 'url', 'caption', 'createTime', 'duration', 'likes', 'comments', 'shares', 'plays', 'bookmarks', 'isPinned', 'coverUrl'];
-    const rows = [headers.join(',')];
-    
-    for (const p of posts) {
-      const stats = p.stats || {};
-      const row = [
-        '"' + (p.id || '').replace(/"/g, '""') + '"',
-        '"' + (p.url || '').replace(/"/g, '""') + '"',
-        '"' + (p.caption || '').replace(/"/g, '""') + '"',
-        '"' + (p.createTime || '') + '"',
-        p.duration || 0,
-        stats.likes || 0,
-        stats.comments || 0,
-        stats.shares || 0,
-        stats.plays || 0,
-        stats.bookmarks || 0,
-        p.isPinned ? 'true' : 'false',
-        '"' + (p.coverUrl || '').replace(/"/g, '""') + '"',
-      ];
-      rows.push(row.join(','));
-    }
-    
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = (filenamePrefix || 'tiktok-posts') + '-' + Date.now() + '.csv';
-    a.click();
-  } catch (e) {
-    alert('CSV Export failed: ' + e.message);
-  }
-}
-
-function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-function fmt(n) { if (!n && n !== 0) return '0'; if (n >= 1000000) return (n/1000000).toFixed(1) + 'M'; if (n >= 1000) return (n/1000).toFixed(1) + 'K'; return n.toString(); }
 </script>
 </body>
 </html>`);
