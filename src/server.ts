@@ -467,14 +467,21 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
 
                 if (bodyText.length > 0) {
                     const json = JSON.parse(bodyText);
-                    const commentList = json.comments || json.data?.comments || json.comment_list || [];
+                    const commentList = json.comments || json.data?.comments || json.comment_list ||
+                        json.reply_comments || json.data?.reply_comments || [];
                     for (const c of commentList) {
                         const parsed = parseComment(c);
                         if (parsed.id && parsed.text) {
                             comments.set(parsed.id, parsed);
                         }
                     }
-                    console.log(`[tiktok] parsed ${commentList.length} comments (total: ${comments.size})`);
+                    if (commentList.length === 0) {
+                        // Log the keys for debugging reply response structure
+                        const keys = Object.keys(json).filter(k => k !== '_extra');
+                        console.log(`[tiktok] 0 comments in response, keys: ${keys.join(', ')}, url: ${url.includes('reply') ? 'reply' : 'list'}`);
+                    } else {
+                        console.log(`[tiktok] parsed ${commentList.length} comments (total: ${comments.size})`);
+                    }
                 }
             } catch (e: any) {
                 console.log(`[tiktok] CDP body read: ${e.message?.slice(0, 100)}`);
