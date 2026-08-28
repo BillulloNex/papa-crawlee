@@ -820,37 +820,18 @@ async function scrapeTikTokUserPosts(
 
         const page = await context.newPage();
 
-        // Attach CDP session to capture network response bodies strictly for /api/post/item_list/
-        const cdp = await context.newCDPSession(page);
-        await cdp.send('Network.enable');
-
-        const requestUrls = new Map<string, string>();
-
-        cdp.on('Network.responseReceived', (event: any) => {
-            const url = event.response.url;
-            // Strictly match user uploaded posts API. Ignore reposts, favorites, stories, recommendations
+        // Use Playwright response listener to capture /api/post/item_list/ streams
+        page.on('response', async (response) => {
+            const url = response.url();
+            // Strictly match user uploaded posts API (ignore reposts, recommendations, stories, collections)
             if (url.includes('tiktok.com') && url.includes('/api/post/item_list') && !url.includes('/repost/') && !url.includes('/favorite/')) {
-                requestUrls.set(event.requestId, url);
-            }
-        });
-
-        cdp.on('Network.loadingFinished', async (event: any) => {
-            const url = requestUrls.get(event.requestId);
-            if (!url) return;
-            requestUrls.delete(event.requestId);
-
-            try {
-                const { body, base64Encoded } = await cdp.send('Network.getResponseBody', {
-                    requestId: event.requestId,
-                });
-                const bodyText = base64Encoded ? Buffer.from(body, 'base64').toString('utf-8') : body;
-                if (bodyText && bodyText.length > 0) {
-                    const json = JSON.parse(bodyText);
+                try {
+                    const json = await response.json();
                     const list = json.itemList || json.items || json.data?.itemList || [];
                     if (Array.isArray(list)) {
                         for (const item of list) {
                             const itemAuthor = (item.author?.uniqueId || item.author?.unique_id || '').toLowerCase();
-                            // Only accept posts by the target creator
+                            // Strictly filter to ensure only the target creator's videos are captured
                             if (itemAuthor === handle.toLowerCase()) {
                                 const parsed = parsePostItem(item);
                                 if (parsed && parsed.id) {
@@ -858,11 +839,11 @@ async function scrapeTikTokUserPosts(
                                 }
                             }
                         }
-                        console.log(`[tiktok-posts] CDP captured ${list.length} posts from item_list (total author posts: ${postsMap.size})`);
+                        console.log(`[tiktok-posts] captured ${list.length} posts from item_list (total author posts: ${postsMap.size})`);
                     }
+                } catch (e: any) {
+                    // Ignore json parse errors for non-json responses
                 }
-            } catch (e: any) {
-                // Ignore transient CDP body read errors
             }
         });
 
@@ -946,7 +927,7 @@ async function scrapeTikTokUserPosts(
         while (Date.now() < deadline && postsMap.size < maxPosts && staleCycles < MAX_STALE_CYCLES) {
             const prevCount = postsMap.size;
 
-            // Scroll down
+            // Scroll down smoothly
             await page.evaluate(() => {
                 window.scrollBy({ top: 1800, behavior: 'smooth' });
             });
@@ -1111,36 +1092,12 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
         });
 
         const page = await context.newPage();
-        const apiUrls: string[] = [];
 
-        const cdp = await context.newCDPSession(page);
-        await cdp.send('Network.enable');
-
-        const requestUrls = new Map<string, string>();
-
-        cdp.on('Network.responseReceived', (event: any) => {
-            const url = event.response.url;
-            if (url.includes('tiktok.com') && (url.includes('/api/') || url.includes('/v1/') || url.includes('/v2/'))) {
-                apiUrls.push(url.split('?')[0]);
-            }
+        page.on('response', async (response) => {
+            const url = response.url();
             if (url.includes('comment') && (url.includes('list') || url.includes('reply'))) {
-                requestUrls.set(event.requestId, url);
-            }
-        });
-
-        cdp.on('Network.loadingFinished', async (event: any) => {
-            const url = requestUrls.get(event.requestId);
-            if (!url) return;
-            requestUrls.delete(event.requestId);
-
-            try {
-                const { body, base64Encoded } = await cdp.send('Network.getResponseBody', {
-                    requestId: event.requestId,
-                });
-                const bodyText = base64Encoded ? Buffer.from(body, 'base64').toString('utf-8') : body;
-
-                if (bodyText.length > 0) {
-                    const json = JSON.parse(bodyText);
+                try {
+                    const json = await response.json();
                     const commentList = json.comments || json.data?.comments || json.comment_list ||
                         json.reply_comments || json.data?.reply_comments || [];
                     for (const c of commentList) {
@@ -1149,9 +1106,7 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
                             comments.set(parsed.id, parsed);
                         }
                     }
-                }
-            } catch (e: any) {
-                // Ignore CDP body read failures
+                } catch {}
             }
         });
 
