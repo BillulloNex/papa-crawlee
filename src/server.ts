@@ -182,6 +182,7 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
+                '--disable-blink-features=AutomationControlled',
             ],
         });
 
@@ -189,6 +190,15 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             viewport: { width: 1280, height: 900 },
             locale: 'en-US',
+            timezoneId: 'America/New_York',
+            extraHTTPHeaders: {
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
+        });
+
+        // Hide webdriver flag
+        await context.addInitScript(() => {
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
         });
 
         const page = await context.newPage();
@@ -242,7 +252,7 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
         });
 
         console.log(`[tiktok] navigating to ${videoUrl}`);
-        await page.goto(videoUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.goto(videoUrl, { waitUntil: 'networkidle', timeout: 30000 });
 
         // Extract video metadata AND comments from rehydration data (SSR data)
         try {
