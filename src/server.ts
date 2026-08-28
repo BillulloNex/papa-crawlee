@@ -220,13 +220,11 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
                 }
 
                 if (url.includes('comment') && (url.includes('list') || url.includes('reply'))) {
-                    console.log(`[tiktok] comment API hit: ${event.response.status} ${url.split('?')[0]}`);
                     try {
                         const { body, base64Encoded } = await cdp.send('Network.getResponseBody', {
                             requestId: event.requestId,
                         });
                         const bodyText = base64Encoded ? Buffer.from(body, 'base64').toString('utf-8') : body;
-                        console.log(`[tiktok] comment body (${bodyText.length} chars): ${bodyText.slice(0, 500)}`);
 
                         if (bodyText.length > 0) {
                             const json = JSON.parse(bodyText);
