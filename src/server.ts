@@ -37,7 +37,7 @@ app.get('/', (_req, res) => {
                 <h3>TikTok Scrapers</h3>
                 <ul>
                     <li><a href="/tiktok"><strong>/tiktok</strong></a> — Interactive Web UI for TikTok Scrapers (Posts & Comments)</li>
-                    <li><a href="/tiktok/posts?handle=khaby.lame&limit=20">/tiktok/posts?handle=khaby.lame&limit=20</a> — Scrape user posts / videos metadata</li>
+                    <li><a href="/tiktok/posts?handle=openai&limit=20">/tiktok/posts?handle=openai&limit=20</a> — Scrape user posts / videos metadata</li>
                     <li><a href="/tiktok/comments?url=https://www.tiktok.com/@arc_journal/video/7402747839643667743">/tiktok/comments?url=...</a> — Scrape video comments</li>
                 </ul>
             </div>
@@ -181,7 +181,7 @@ app.get('/tiktok', (_req, res) => {
     <div class="card">
       <h2>Target TikTok Creator Handle</h2>
       <label>Username or Profile URL</label>
-      <input type="text" id="postHandle" placeholder="@khaby.lame or charlidamelio or https://www.tiktok.com/@mrbeast" value="@khaby.lame" />
+      <input type="text" id="postHandle" placeholder="@openai or charlidamelio or https://www.tiktok.com/@openai" value="@openai" />
     </div>
 
     <div class="card">
@@ -820,7 +820,7 @@ async function scrapeTikTokUserPosts(
 
         const page = await context.newPage();
 
-        // Attach CDP session to capture network response bodies for /api/post/item_list/
+        // Attach CDP session to capture network response bodies strictly for /api/post/item_list/
         const cdp = await context.newCDPSession(page);
         await cdp.send('Network.enable');
 
@@ -828,7 +828,8 @@ async function scrapeTikTokUserPosts(
 
         cdp.on('Network.responseReceived', (event: any) => {
             const url = event.response.url;
-            if (url.includes('tiktok.com') && (url.includes('/api/post/item_list') || url.includes('/api/user/detail') || url.includes('item_list'))) {
+            // Strictly match user uploaded posts API. Ignore reposts, favorites, stories, recommendations
+            if (url.includes('tiktok.com') && url.includes('/api/post/item_list') && !url.includes('/repost/') && !url.includes('/favorite/')) {
                 requestUrls.set(event.requestId, url);
             }
         });
@@ -848,12 +849,16 @@ async function scrapeTikTokUserPosts(
                     const list = json.itemList || json.items || json.data?.itemList || [];
                     if (Array.isArray(list)) {
                         for (const item of list) {
-                            const parsed = parsePostItem(item);
-                            if (parsed && parsed.id) {
-                                postsMap.set(parsed.id, parsed);
+                            const itemAuthor = (item.author?.uniqueId || item.author?.unique_id || '').toLowerCase();
+                            // Only accept posts by the target creator
+                            if (itemAuthor === handle.toLowerCase()) {
+                                const parsed = parsePostItem(item);
+                                if (parsed && parsed.id) {
+                                    postsMap.set(parsed.id, parsed);
+                                }
                             }
                         }
-                        console.log(`[tiktok-posts] CDP captured ${list.length} posts from item_list (total: ${postsMap.size})`);
+                        console.log(`[tiktok-posts] CDP captured ${list.length} posts from item_list (total author posts: ${postsMap.size})`);
                     }
                 }
             } catch (e: any) {
@@ -900,28 +905,34 @@ async function scrapeTikTokUserPosts(
                     console.log(`[tiktok-posts] extracted user @${user.handle} (${user.followerCount} followers)`);
                 }
 
-                // Initial batch of items from SSR
+                // Initial batch of items from SSR (strictly matching handle)
                 const rawItems = userDetail.itemList || userDetail.items || [];
                 if (Array.isArray(rawItems)) {
                     for (const item of rawItems) {
-                        const parsed = parsePostItem(item);
-                        if (parsed && parsed.id) {
-                            postsMap.set(parsed.id, parsed);
+                        const itemAuthor = (item.author?.uniqueId || item.author?.unique_id || '').toLowerCase();
+                        if (!itemAuthor || itemAuthor === handle.toLowerCase()) {
+                            const parsed = parsePostItem(item);
+                            if (parsed && parsed.id) {
+                                postsMap.set(parsed.id, parsed);
+                            }
                         }
                     }
                 }
 
-                // Also check SIGI_STATE ItemModule
+                // Also check SIGI_STATE ItemModule with author filtering
                 if (rehydrationData.SIGI_STATE?.ItemModule) {
                     const itemModule = rehydrationData.SIGI_STATE.ItemModule;
-                    for (const item of Object.values(itemModule)) {
-                        const parsed = parsePostItem(item);
-                        if (parsed && parsed.id) {
-                            postsMap.set(parsed.id, parsed);
+                    for (const item of Object.values(itemModule) as any[]) {
+                        const itemAuthor = (item.author?.uniqueId || item.author?.unique_id || '').toLowerCase();
+                        if (itemAuthor === handle.toLowerCase()) {
+                            const parsed = parsePostItem(item);
+                            if (parsed && parsed.id) {
+                                postsMap.set(parsed.id, parsed);
+                            }
                         }
                     }
                 }
-                console.log(`[tiktok-posts] posts from SSR: ${postsMap.size}`);
+                console.log(`[tiktok-posts] posts from SSR for @${handle}: ${postsMap.size}`);
             }
         } catch (e: any) {
             console.log(`[tiktok-posts] rehydration parse failed: ${e.message}`);
@@ -942,27 +953,30 @@ async function scrapeTikTokUserPosts(
 
             await page.waitForTimeout(2000);
 
-            // Supplementary DOM extraction for rendered video tiles
+            // Supplementary DOM extraction for rendered video tiles matching this creator
             try {
                 const domPosts = await page.evaluate((currentHandle) => {
                     const items: any[] = [];
                     const postElements = document.querySelectorAll('[data-e2e="user-post-item"]');
+                    const targetPath = '/@' + currentHandle.toLowerCase() + '/video/';
                     postElements.forEach((el) => {
                         const linkEl = el.querySelector('a[href*="/video/"]');
                         const imgEl = el.querySelector('img');
                         const viewsEl = el.querySelector('[data-e2e="video-views"]');
                         const href = linkEl?.getAttribute('href') || '';
-                        const idMatch = href.match(/\/video\/(\d+)/);
-                        if (idMatch && idMatch[1]) {
-                            const id = idMatch[1];
-                            const viewsText = viewsEl?.textContent?.trim() || '0';
-                            items.push({
-                                id,
-                                url: href.startsWith('http') ? href : `https://www.tiktok.com${href}`,
-                                cover: imgEl?.src || '',
-                                title: imgEl?.alt || linkEl?.getAttribute('title') || '',
-                                viewsText,
-                            });
+                        if (href.toLowerCase().includes(targetPath) || href.startsWith('/video/')) {
+                            const idMatch = href.match(/\/video\/(\d+)/);
+                            if (idMatch && idMatch[1]) {
+                                const id = idMatch[1];
+                                const viewsText = viewsEl?.textContent?.trim() || '0';
+                                items.push({
+                                    id,
+                                    url: href.startsWith('http') ? href : `https://www.tiktok.com/@${currentHandle}/video/${id}`,
+                                    cover: imgEl?.src || '',
+                                    title: imgEl?.alt || linkEl?.getAttribute('title') || '',
+                                    viewsText,
+                                });
+                            }
                         }
                     });
                     return items;
@@ -1021,7 +1035,10 @@ async function scrapeTikTokUserPosts(
         if (browser) await browser.close().catch(() => {});
     }
 
-    const postsArray = Array.from(postsMap.values()).slice(0, maxPosts);
+    // Sort pinned posts first, then chronological
+    const postsArray = Array.from(postsMap.values())
+        .sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0))
+        .slice(0, maxPosts);
 
     return {
         user,
@@ -1036,7 +1053,7 @@ app.get('/tiktok/posts', async (req, res) => {
     const handle = (req.query.handle as string) || (req.query.user as string) || (req.query.url as string);
     if (!handle) {
         return res.status(400).json({
-            error: 'Missing ?handle= parameter. Provide a TikTok handle e.g. /tiktok/posts?handle=khaby.lame',
+            error: 'Missing ?handle= parameter. Provide a TikTok handle e.g. /tiktok/posts?handle=openai',
         });
     }
 
