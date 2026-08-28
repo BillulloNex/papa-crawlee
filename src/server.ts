@@ -437,42 +437,47 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
         const apiUrls: string[] = [];
 
         // Use CDP (Chrome DevTools Protocol) to capture response bodies
-        // This captures the ACTUAL browser response including all cookies/tokens,
-        // unlike route.fetch() which makes a separate request
         const cdp = await context.newCDPSession(page);
         await cdp.send('Network.enable');
 
-        cdp.on('Network.responseReceived', async (event: any) => {
+        // Track request IDs → URLs (responseReceived fires before body is ready)
+        const requestUrls = new Map<string, string>();
+
+        cdp.on('Network.responseReceived', (event: any) => {
             const url = event.response.url;
+            if (url.includes('tiktok.com') && (url.includes('/api/') || url.includes('/v1/') || url.includes('/v2/'))) {
+                apiUrls.push(url.split('?')[0]);
+            }
+            if (url.includes('comment') && (url.includes('list') || url.includes('reply'))) {
+                requestUrls.set(event.requestId, url);
+            }
+        });
+
+        // Read body on loadingFinished — body is guaranteed to be available
+        cdp.on('Network.loadingFinished', async (event: any) => {
+            const url = requestUrls.get(event.requestId);
+            if (!url) return;
+            requestUrls.delete(event.requestId);
+
             try {
-                if (url.includes('tiktok.com') && (url.includes('/api/') || url.includes('/v1/') || url.includes('/v2/'))) {
-                    apiUrls.push(url.split('?')[0]);
-                }
+                const { body, base64Encoded } = await cdp.send('Network.getResponseBody', {
+                    requestId: event.requestId,
+                });
+                const bodyText = base64Encoded ? Buffer.from(body, 'base64').toString('utf-8') : body;
 
-                if (url.includes('comment') && (url.includes('list') || url.includes('reply'))) {
-                    try {
-                        const { body, base64Encoded } = await cdp.send('Network.getResponseBody', {
-                            requestId: event.requestId,
-                        });
-                        const bodyText = base64Encoded ? Buffer.from(body, 'base64').toString('utf-8') : body;
-
-                        if (bodyText.length > 0) {
-                            const json = JSON.parse(bodyText);
-                            const commentList = json.comments || json.data?.comments || json.comment_list || [];
-                            for (const c of commentList) {
-                                const parsed = parseComment(c);
-                                if (parsed.id && parsed.text) {
-                                    comments.set(parsed.id, parsed);
-                                }
-                            }
-                            console.log(`[tiktok] parsed ${commentList.length} comments (total: ${comments.size})`);
+                if (bodyText.length > 0) {
+                    const json = JSON.parse(bodyText);
+                    const commentList = json.comments || json.data?.comments || json.comment_list || [];
+                    for (const c of commentList) {
+                        const parsed = parseComment(c);
+                        if (parsed.id && parsed.text) {
+                            comments.set(parsed.id, parsed);
                         }
-                    } catch (e: any) {
-                        console.log(`[tiktok] CDP body read: ${e.message?.slice(0, 100)}`);
                     }
+                    console.log(`[tiktok] parsed ${commentList.length} comments (total: ${comments.size})`);
                 }
-            } catch {
-                // skip
+            } catch (e: any) {
+                console.log(`[tiktok] CDP body read: ${e.message?.slice(0, 100)}`);
             }
         });
 
@@ -571,7 +576,7 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
         const deadline = Date.now() + timeoutMs;
         let previousCount = 0;
         let staleCycles = 0;
-        const MAX_STALE_CYCLES = 3;
+        const MAX_STALE_CYCLES = 5;
 
         while (Date.now() < deadline && staleCycles < MAX_STALE_CYCLES) {
             const prevSize = comments.size;
