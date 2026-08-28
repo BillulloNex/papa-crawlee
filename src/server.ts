@@ -553,12 +553,11 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
             console.log(`[tiktok] rehydration parse failed: ${e}`);
         }
 
-        // Wait for comment section to load
+        // Wait for comment section to load and comments to appear
         await page.waitForTimeout(3000);
 
         // Try to click the comments section to ensure it's open
         try {
-            // Look for the comment count button/icon and click it
             const commentButton = page.locator('[data-e2e="comment-icon"]').first();
             if (await commentButton.isVisible({ timeout: 3000 })) {
                 await commentButton.click();
@@ -568,43 +567,96 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
             // Comment section might already be visible
         }
 
-        // Scroll the comment section to trigger pagination
+        // Find the scrollable comment container and paginate
         const deadline = Date.now() + timeoutMs;
         let previousCount = 0;
         let staleCycles = 0;
-        const MAX_STALE_CYCLES = 5;
+        const MAX_STALE_CYCLES = 3;
 
         while (Date.now() < deadline && staleCycles < MAX_STALE_CYCLES) {
-            // Try scrolling different potential comment containers
+            const prevSize = comments.size;
+
+            // Scroll inside the actual comment container
             await page.evaluate(() => {
-                // Scroll the comment container if found
-                const containers = [
-                    document.querySelector('[class*="CommentListContainer"]'),
-                    document.querySelector('[class*="comment-list"]'),
-                    document.querySelector('[data-e2e="comment-list"]'),
-                    document.querySelector('[class*="DivCommentListContainer"]'),
+                // Strategy 1: Find the scrollable container by testing scroll properties
+                // TikTok's comment section is a div with overflow-y: auto/scroll
+                const candidates = [
+                    // Known TikTok comment container selectors
+                    ...document.querySelectorAll('[class*="DivCommentListContainer"]'),
+                    ...document.querySelectorAll('[class*="CommentListContainer"]'),
+                    ...document.querySelectorAll('[data-e2e="comment-list"]'),
+                    ...document.querySelectorAll('[class*="comment-list"]'),
                 ];
-                for (const container of containers) {
-                    if (container) {
-                        container.scrollTop = container.scrollHeight;
+
+                // If known selectors found, scroll the first scrollable one
+                for (const el of candidates) {
+                    if (el.scrollHeight > el.clientHeight) {
+                        el.scrollTop = el.scrollHeight;
                         return;
                     }
                 }
-                // Fallback: scroll the whole page
-                window.scrollBy(0, 1000);
+
+                // Strategy 2: Walk up from a comment element to find its scrollable parent
+                const anyComment = document.querySelector('[data-e2e="comment-level-1"]') ||
+                    document.querySelector('[class*="DivCommentItemContainer"]') ||
+                    document.querySelector('[class*="CommentItem"]');
+                if (anyComment) {
+                    let parent = anyComment.parentElement;
+                    while (parent && parent !== document.body) {
+                        const style = window.getComputedStyle(parent);
+                        const overflowY = style.overflowY;
+                        if ((overflowY === 'auto' || overflowY === 'scroll') && parent.scrollHeight > parent.clientHeight + 50) {
+                            parent.scrollTop = parent.scrollHeight;
+                            return;
+                        }
+                        parent = parent.parentElement;
+                    }
+                }
+
+                // Strategy 3: Find any deeply scrollable div that's likely the comment panel
+                const allDivs = document.querySelectorAll('div');
+                let bestDiv: Element | null = null;
+                let bestOverflow = 0;
+                for (const div of allDivs) {
+                    const overflow = div.scrollHeight - div.clientHeight;
+                    if (overflow > 200 && overflow > bestOverflow) {
+                        const style = window.getComputedStyle(div);
+                        if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+                            // Check it's not the main page scroller or video container
+                            const rect = div.getBoundingClientRect();
+                            if (rect.width < window.innerWidth * 0.8) { // Side panel, not full width
+                                bestDiv = div;
+                                bestOverflow = overflow;
+                            }
+                        }
+                    }
+                }
+                if (bestDiv) {
+                    bestDiv.scrollTop = bestDiv.scrollHeight;
+                    return;
+                }
+
+                // Last resort: scroll the page itself
+                window.scrollBy(0, 1500);
             });
 
-            await page.waitForTimeout(1500);
+            // Wait for potential API response — use a short wait then check
+            await page.waitForTimeout(2000);
 
-            if (comments.size === previousCount) {
-                staleCycles++;
-            } else {
+            // Check if new comments arrived
+            if (comments.size > prevSize) {
                 staleCycles = 0;
-                previousCount = comments.size;
+                console.log(`[tiktok] scroll → ${comments.size} comments (+${comments.size - prevSize})`);
+            } else {
+                staleCycles++;
+                // On stale, wait a bit longer before next attempt
+                await page.waitForTimeout(1000);
             }
 
-            console.log(`[tiktok] scroll cycle — ${comments.size} comments (stale: ${staleCycles}/${MAX_STALE_CYCLES})`);
+            previousCount = comments.size;
         }
+
+        console.log(`[tiktok] scroll done — ${comments.size} comments, ${staleCycles} stale cycles`);
 
         // Log all API URLs seen for debugging
         const uniqueApiUrls = [...new Set(apiUrls)];
