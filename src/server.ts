@@ -206,26 +206,29 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
         // Track all API URLs for debugging
         const apiUrls: string[] = [];
 
-        // Use route interception to capture comment API responses (response.text() returns empty for some responses)
-        await page.route('**/*', async (route) => {
-            const url = route.request().url();
-            
-            // Log API calls
-            if (url.includes('tiktok.com') && (url.includes('/api/') || url.includes('/v1/') || url.includes('/v2/'))) {
-                apiUrls.push(url.split('?')[0]);
-            }
+        // Use CDP (Chrome DevTools Protocol) to capture response bodies
+        // This captures the ACTUAL browser response including all cookies/tokens,
+        // unlike route.fetch() which makes a separate request
+        const cdp = await context.newCDPSession(page);
+        await cdp.send('Network.enable');
 
-            // Intercept comment API calls
-            if (url.includes('comment') && (url.includes('list') || url.includes('reply'))) {
-                try {
-                    const response = await route.fetch();
-                    const body = await response.body();
-                    const bodyText = body.toString('utf-8');
-                    console.log(`[tiktok] comment API intercepted: ${response.status()} (${bodyText.length} chars) ${url.split('?')[0]}`);
-                    
-                    if (bodyText.length > 0) {
-                        console.log(`[tiktok] comment body preview: ${bodyText.slice(0, 500)}`);
-                        try {
+        cdp.on('Network.responseReceived', async (event: any) => {
+            const url = event.response.url;
+            try {
+                if (url.includes('tiktok.com') && (url.includes('/api/') || url.includes('/v1/') || url.includes('/v2/'))) {
+                    apiUrls.push(url.split('?')[0]);
+                }
+
+                if (url.includes('comment') && (url.includes('list') || url.includes('reply'))) {
+                    console.log(`[tiktok] comment API hit: ${event.response.status} ${url.split('?')[0]}`);
+                    try {
+                        const { body, base64Encoded } = await cdp.send('Network.getResponseBody', {
+                            requestId: event.requestId,
+                        });
+                        const bodyText = base64Encoded ? Buffer.from(body, 'base64').toString('utf-8') : body;
+                        console.log(`[tiktok] comment body (${bodyText.length} chars): ${bodyText.slice(0, 500)}`);
+
+                        if (bodyText.length > 0) {
                             const json = JSON.parse(bodyText);
                             const commentList = json.comments || json.data?.comments || json.comment_list || [];
                             for (const c of commentList) {
@@ -235,19 +238,13 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
                                 }
                             }
                             console.log(`[tiktok] parsed ${commentList.length} comments (total: ${comments.size})`);
-                        } catch {
-                            console.log(`[tiktok] JSON parse failed for comment body`);
                         }
+                    } catch (e: any) {
+                        console.log(`[tiktok] CDP body read: ${e.message?.slice(0, 100)}`);
                     }
-                    
-                    // Fulfill the route with the original response so the page still works
-                    await route.fulfill({ response });
-                } catch (e: any) {
-                    console.log(`[tiktok] route fetch error: ${e.message}`);
-                    await route.continue();
                 }
-            } else {
-                await route.continue();
+            } catch {
+                // skip
             }
         });
 
