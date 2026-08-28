@@ -756,6 +756,55 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
                 }
             }
 
+            // DOM-based reply extraction — replies may render even if API response was empty
+            try {
+                const domReplies = await page.evaluate(() => {
+                    const results: any[] = [];
+                    // TikTok reply comments use data-e2e="comment-level-2"
+                    const replyEls = document.querySelectorAll('[data-e2e="comment-level-2"]');
+                    replyEls.forEach((el, i) => {
+                        const textEl = el.querySelector('[data-e2e="comment-level-2"] span') ||
+                            el.querySelector('[class*="CommentText"]') ||
+                            el.querySelector('p') ||
+                            el.querySelector('span:not([class*="name"]):not([class*="time"])');
+                        const authorEl = el.querySelector('[data-e2e="comment-username-2"]') ||
+                            el.querySelector('[class*="UserName"]') ||
+                            el.querySelector('a[href*="/@"]');
+                        const text = textEl?.textContent?.trim() || '';
+                        const author = authorEl?.textContent?.trim().replace('@', '') || '';
+                        if (text) {
+                            results.push({
+                                id: `reply-dom-${i}`,
+                                text,
+                                author,
+                                authorNickname: author,
+                                authorAvatar: '',
+                                likes: 0,
+                                replyCount: 0,
+                                createTime: '',
+                                isAuthorLiked: false,
+                            });
+                        }
+                    });
+                    return results;
+                });
+
+                if (domReplies.length > 0) {
+                    let newFromDom = 0;
+                    for (const r of domReplies) {
+                        // Deduplicate by text content (DOM replies don't have real IDs)
+                        const isDuplicate = [...comments.values()].some(c => c.text === r.text && c.author === r.author);
+                        if (!isDuplicate) {
+                            comments.set(r.id, r);
+                            newFromDom++;
+                        }
+                    }
+                    console.log(`[tiktok] DOM reply extraction: ${domReplies.length} found, ${newFromDom} new (total: ${comments.size})`);
+                }
+            } catch (e: any) {
+                console.log(`[tiktok] DOM reply extraction failed: ${e.message?.slice(0, 80)}`);
+            }
+
             console.log(`[tiktok] replies done — ${comments.size - topLevelCount} replies added (${comments.size} total)`);
         }
 
