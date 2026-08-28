@@ -661,7 +661,98 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
             previousCount = comments.size;
         }
 
-        console.log(`[tiktok] scroll done — ${comments.size} comments, ${staleCycles} stale cycles`);
+        const topLevelCount = comments.size;
+        console.log(`[tiktok] scroll done — ${topLevelCount} top-level comments, ${staleCycles} stale cycles`);
+
+        // ── Phase 2: Expand reply threads ──────────────────────────────────
+        // Click "View N replies" buttons to trigger /api/comment/list/reply/
+        // The CDP handler already captures reply responses
+        if (Date.now() < deadline) {
+            console.log(`[tiktok] expanding reply threads...`);
+            let replyRound = 0;
+            const MAX_REPLY_ROUNDS = 20; // safety cap
+
+            while (Date.now() < deadline && replyRound < MAX_REPLY_ROUNDS) {
+                replyRound++;
+                const prevSize = comments.size;
+
+                // Click all visible "View/Show replies" buttons
+                const clicked = await page.evaluate(() => {
+                    let clickCount = 0;
+                    // TikTok uses various selectors for reply expand buttons
+                    const selectors = [
+                        '[data-e2e="view-more-replies-1"]',
+                        '[class*="ReplyActionText"]',
+                        '[class*="view-more-reply"]',
+                        'p[class*="ReplyButton"]',
+                        'span[class*="ReplyButton"]',
+                    ];
+
+                    for (const selector of selectors) {
+                        const buttons = document.querySelectorAll(selector);
+                        buttons.forEach((btn) => {
+                            const el = btn as HTMLElement;
+                            // Only click if visible and contains reply-related text
+                            if (el.offsetParent !== null) {
+                                el.click();
+                                clickCount++;
+                            }
+                        });
+                    }
+
+                    // Also look for text-based reply buttons by content
+                    const allSpans = document.querySelectorAll('p, span');
+                    for (const span of allSpans) {
+                        const text = span.textContent?.toLowerCase() || '';
+                        if ((text.includes('view') || text.includes('show')) &&
+                            text.includes('repl') &&
+                            (span as HTMLElement).offsetParent !== null) {
+                            (span as HTMLElement).click();
+                            clickCount++;
+                        }
+                    }
+
+                    return clickCount;
+                });
+
+                if (clicked === 0 && comments.size === prevSize) {
+                    // No buttons found and no new comments — we're done
+                    console.log(`[tiktok] no more reply buttons found`);
+                    break;
+                }
+
+                // Wait for reply API responses
+                await page.waitForTimeout(2500);
+
+                // Scroll the comment container to reveal more reply buttons
+                await page.evaluate(() => {
+                    const anyComment = document.querySelector('[data-e2e="comment-level-1"]') ||
+                        document.querySelector('[class*="DivCommentItemContainer"]');
+                    if (anyComment) {
+                        let parent = anyComment.parentElement;
+                        while (parent && parent !== document.body) {
+                            const style = window.getComputedStyle(parent);
+                            if ((style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+                                parent.scrollHeight > parent.clientHeight + 50) {
+                                parent.scrollTop = parent.scrollHeight;
+                                return;
+                            }
+                            parent = parent.parentElement;
+                        }
+                    }
+                    window.scrollBy(0, 800);
+                });
+
+                await page.waitForTimeout(1000);
+
+                const newReplies = comments.size - prevSize;
+                if (newReplies > 0) {
+                    console.log(`[tiktok] reply round ${replyRound}: +${newReplies} replies (total: ${comments.size})`);
+                }
+            }
+
+            console.log(`[tiktok] replies done — ${comments.size - topLevelCount} replies added (${comments.size} total)`);
+        }
 
         // Log all API URLs seen for debugging
         const uniqueApiUrls = [...new Set(apiUrls)];
