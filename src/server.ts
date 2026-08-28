@@ -1,6 +1,11 @@
 import express from 'express';
 import { CheerioCrawler, Dataset } from 'crawlee';
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+
+// Register stealth plugin — patches navigator.webdriver, chrome.runtime,
+// plugin enumeration, languages, WebGL vendor, and 10+ other automation signals
+chromium.use(StealthPlugin());
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -194,11 +199,6 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
             extraHTTPHeaders: {
                 'Accept-Language': 'en-US,en;q=0.9',
             },
-        });
-
-        // Hide webdriver flag
-        await context.addInitScript(() => {
-            Object.defineProperty(navigator, 'webdriver', { get: () => false });
         });
 
         const page = await context.newPage();
