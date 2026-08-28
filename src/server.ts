@@ -1,5 +1,6 @@
 import express from 'express';
 import { CheerioCrawler, Dataset } from 'crawlee';
+import { chromium } from 'playwright';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -15,6 +16,7 @@ app.get('/', (_req, res) => {
             <li><a href="/crawl?case=httpbin">/crawl?case=httpbin</a> — httpbin json</li>
             <li><a href="/zapier?limit=100&pages=1">/zapier?limit=100&pages=1</a> — Zapier integration list (10014 apps)</li>
             <li><a href="/zapier?limit=100&pages=101">/zapier?limit=100&pages=101</a> — full Zapier dump (10k)</li>
+            <li><a href="/tiktok/comments?url=https://www.tiktok.com/@arc_journal/video/7402747839643667743">/tiktok/comments</a> — TikTok comment scraper</li>
             <li><a href="/health">/health</a></li>
         </ul>
         <p>See <a href="https://github.com/apify/crawlee">crawlee.dev</a> • test cases in test.md</p>
@@ -23,7 +25,8 @@ app.get('/', (_req, res) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
-// Zapier: fetch full app directory via public API https://zapier.com/api/v4/apps — parallel + cached
+// ── Zapier (unchanged) ────────────────────────────────────────────────────────
+
 let zapierCache: { key: string; data: any[]; ts: number } | null = null;
 const ZAPIER_CACHE_MS = 60 * 60 * 1000;
 async function fetchZapierApps(limit = 100, maxPages = 5): Promise<any[]> {
@@ -31,7 +34,6 @@ async function fetchZapierApps(limit = 100, maxPages = 5): Promise<any[]> {
     if (zapierCache && zapierCache.key === key && Date.now() - zapierCache.ts < ZAPIER_CACHE_MS) {
         return zapierCache.data;
     }
-    // first page to get total, then parallel rest
     const firstResp = await fetch(`https://zapier.com/api/v4/apps?limit=${limit}&offset=0`, {
         headers: { 'User-Agent': 'papa-crawlee/1.0', Accept: 'application/json' },
     });
@@ -61,7 +63,7 @@ async function fetchZapierApps(limit = 100, maxPages = 5): Promise<any[]> {
         }
     }
     all.sort((a, b) => a.popularity - b.popularity);
-    if (maxPages === 101) zapierCache = { key, data: all, ts: Date.now() }; // cache full dump only
+    if (maxPages === 101) zapierCache = { key, data: all, ts: Date.now() };
     return all;
 }
 
@@ -104,6 +106,237 @@ app.get('/zapier-names', async (_req, res) => {
         res.status(500).send(String(e.message));
     }
 });
+
+// ── TikTok comment scraper ─────────────────────────────────────────────────────
+
+interface TikTokComment {
+    id: string;
+    text: string;
+    author: string;
+    authorNickname: string;
+    authorAvatar: string;
+    likes: number;
+    replyCount: number;
+    createTime: string;
+    isAuthorLiked: boolean;
+}
+
+interface TikTokVideo {
+    id: string;
+    url: string;
+    author: string;
+    authorNickname: string;
+    caption: string;
+    likes: number;
+    comments: number;
+    shares: number;
+    plays: number;
+    createTime: string;
+}
+
+function parseComment(c: any): TikTokComment {
+    return {
+        id: String(c.cid || c.id || ''),
+        text: c.text || c.comment || '',
+        author: c.user?.unique_id || c.user?.uniqueId || '',
+        authorNickname: c.user?.nickname || '',
+        authorAvatar: c.user?.avatar_thumb?.url_list?.[0] || c.user?.avatarThumb || '',
+        likes: c.digg_count ?? c.diggCount ?? 0,
+        replyCount: c.reply_comment_total ?? c.replyCommentTotal ?? 0,
+        createTime: new Date((c.create_time ?? c.createTime ?? 0) * 1000).toISOString(),
+        isAuthorLiked: !!(c.is_author_digged ?? c.isAuthorDigged),
+    };
+}
+
+function parseVideoMeta(itemStruct: any): TikTokVideo {
+    return {
+        id: itemStruct.id || '',
+        url: `https://www.tiktok.com/@${itemStruct.author?.uniqueId || ''}/video/${itemStruct.id}`,
+        author: itemStruct.author?.uniqueId || '',
+        authorNickname: itemStruct.author?.nickname || '',
+        caption: itemStruct.desc || '',
+        likes: itemStruct.stats?.diggCount ?? 0,
+        comments: itemStruct.stats?.commentCount ?? 0,
+        shares: itemStruct.stats?.shareCount ?? 0,
+        plays: itemStruct.stats?.playCount ?? 0,
+        createTime: new Date((itemStruct.createTime ?? 0) * 1000).toISOString(),
+    };
+}
+
+async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promise<{
+    video: TikTokVideo | null;
+    comments: TikTokComment[];
+    durationMs: number;
+    error?: string;
+}> {
+    const start = Date.now();
+    const comments = new Map<string, TikTokComment>();
+    let video: TikTokVideo | null = null;
+    let browser;
+
+    try {
+        browser = await chromium.launch({
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+            ],
+        });
+
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+            locale: 'en-US',
+        });
+
+        const page = await context.newPage();
+
+        // Intercept TikTok comment API responses
+        page.on('response', async (response) => {
+            const url = response.url();
+            try {
+                if (url.includes('/api/comment/list') || url.includes('/comment/list')) {
+                    const json = await response.json();
+                    const commentList = json.comments || json.data?.comments || [];
+                    for (const c of commentList) {
+                        const parsed = parseComment(c);
+                        if (parsed.id && parsed.text) {
+                            comments.set(parsed.id, parsed);
+                        }
+                    }
+                    console.log(`[tiktok] intercepted ${commentList.length} comments (total: ${comments.size})`);
+                }
+            } catch {
+                // non-JSON response or parse error — skip
+            }
+        });
+
+        console.log(`[tiktok] navigating to ${videoUrl}`);
+        await page.goto(videoUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+        // Extract video metadata from rehydration data
+        try {
+            const rehydrationData = await page.evaluate(() => {
+                const script = document.querySelector('#__UNIVERSAL_DATA_FOR_REHYDRATION__');
+                if (script?.textContent) {
+                    return JSON.parse(script.textContent);
+                }
+                return null;
+            });
+
+            if (rehydrationData) {
+                const scope = rehydrationData['__DEFAULT_SCOPE__'] || {};
+                const detail = scope['webapp.video-detail'] || scope['webapp.video_detail'] || {};
+                const itemStruct = detail.itemInfo?.itemStruct || detail.itemStruct;
+                if (itemStruct) {
+                    video = parseVideoMeta(itemStruct);
+                    console.log(`[tiktok] video: ${video.caption.slice(0, 60)}... (${video.comments} comments)`);
+                }
+            }
+        } catch (e) {
+            console.log(`[tiktok] rehydration parse failed: ${e}`);
+        }
+
+        // Wait for comment section to load
+        await page.waitForTimeout(3000);
+
+        // Try to click the comments section to ensure it's open
+        try {
+            // Look for the comment count button/icon and click it
+            const commentButton = page.locator('[data-e2e="comment-icon"]').first();
+            if (await commentButton.isVisible({ timeout: 3000 })) {
+                await commentButton.click();
+                await page.waitForTimeout(2000);
+            }
+        } catch {
+            // Comment section might already be visible
+        }
+
+        // Scroll the comment section to trigger pagination
+        const deadline = Date.now() + timeoutMs;
+        let previousCount = 0;
+        let staleCycles = 0;
+        const MAX_STALE_CYCLES = 5;
+
+        while (Date.now() < deadline && staleCycles < MAX_STALE_CYCLES) {
+            // Try scrolling different potential comment containers
+            await page.evaluate(() => {
+                // Scroll the comment container if found
+                const containers = [
+                    document.querySelector('[class*="CommentListContainer"]'),
+                    document.querySelector('[class*="comment-list"]'),
+                    document.querySelector('[data-e2e="comment-list"]'),
+                    document.querySelector('[class*="DivCommentListContainer"]'),
+                ];
+                for (const container of containers) {
+                    if (container) {
+                        container.scrollTop = container.scrollHeight;
+                        return;
+                    }
+                }
+                // Fallback: scroll the whole page
+                window.scrollBy(0, 1000);
+            });
+
+            await page.waitForTimeout(1500);
+
+            if (comments.size === previousCount) {
+                staleCycles++;
+            } else {
+                staleCycles = 0;
+                previousCount = comments.size;
+            }
+
+            console.log(`[tiktok] scroll cycle — ${comments.size} comments (stale: ${staleCycles}/${MAX_STALE_CYCLES})`);
+        }
+
+        await context.close();
+    } catch (e: any) {
+        console.error(`[tiktok] error: ${e.message}`);
+        return {
+            video,
+            comments: Array.from(comments.values()),
+            durationMs: Date.now() - start,
+            error: e.message,
+        };
+    } finally {
+        if (browser) await browser.close().catch(() => {});
+    }
+
+    return {
+        video,
+        comments: Array.from(comments.values()),
+        durationMs: Date.now() - start,
+    };
+}
+
+app.get('/tiktok/comments', async (req, res) => {
+    const url = req.query.url as string;
+    if (!url || !url.includes('tiktok.com')) {
+        return res.status(400).json({ error: 'Missing or invalid ?url= parameter. Provide a TikTok video URL.' });
+    }
+
+    const timeout = Math.min(parseInt((req.query.timeout as string) || '60000', 10), 120000);
+
+    try {
+        console.log(`[tiktok] request: ${url}`);
+        const result = await scrapeTikTokComments(url, timeout);
+        res.json({
+            video: result.video,
+            comments: result.comments,
+            totalComments: result.video?.comments ?? null,
+            scrapedComments: result.comments.length,
+            durationMs: result.durationMs,
+            ...(result.error ? { error: result.error } : {}),
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message, stack: e.stack });
+    }
+});
+
+// ── Cheerio crawl (unchanged) ──────────────────────────────────────────────────
 
 async function runCrawl(targetUrl: string, label = 'smoke'): Promise<any[]> {
     const results: any[] = [];
