@@ -207,17 +207,33 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
 
                 // Broad matching for comment endpoints
                 if (url.includes('comment') && (url.includes('list') || url.includes('reply'))) {
+                    const status = response.status();
                     const contentType = response.headers()['content-type'] || '';
-                    if (!contentType.includes('json')) return;
-                    const json = await response.json();
-                    const commentList = json.comments || json.data?.comments || json.comment_list || [];
-                    for (const c of commentList) {
-                        const parsed = parseComment(c);
-                        if (parsed.id && parsed.text) {
-                            comments.set(parsed.id, parsed);
+                    console.log(`[tiktok] comment API hit: ${status} ${contentType} ${url.split('?')[0]}`);
+                    
+                    let bodyText = '';
+                    try {
+                        bodyText = await response.text();
+                        console.log(`[tiktok] comment API body preview (${bodyText.length} chars): ${bodyText.slice(0, 300)}`);
+                    } catch {
+                        console.log(`[tiktok] could not read comment API body`);
+                    }
+                    
+                    if (bodyText && contentType.includes('json')) {
+                        try {
+                            const json = JSON.parse(bodyText);
+                            const commentList = json.comments || json.data?.comments || json.comment_list || [];
+                            for (const c of commentList) {
+                                const parsed = parseComment(c);
+                                if (parsed.id && parsed.text) {
+                                    comments.set(parsed.id, parsed);
+                                }
+                            }
+                            console.log(`[tiktok] parsed ${commentList.length} comments (total: ${comments.size})`);
+                        } catch {
+                            console.log(`[tiktok] comment API JSON parse failed`);
                         }
                     }
-                    console.log(`[tiktok] intercepted ${commentList.length} comments from ${url.split('?')[0]} (total: ${comments.size})`);
                 }
             } catch {
                 // non-JSON response or parse error — skip
