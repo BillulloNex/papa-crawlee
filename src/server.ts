@@ -28,6 +28,236 @@ app.get('/', (_req, res) => {
     `);
 });
 
+// ── TikTok Scraper UI ─────────────────────────────────────────────────────────
+app.get('/tiktok', (_req, res) => {
+    res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TikTok Comment Scraper — Papa Crawlee</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; padding: 0; }
+  .header { background: #1a1a1a; border-bottom: 1px solid #2a2a2a; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+  .header h1 { font-size: 18px; font-weight: 600; color: #fff; }
+  .header .badge { background: #22c55e; color: #000; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+  .container { max-width: 720px; margin: 32px auto; padding: 0 24px; }
+  .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .card h2 { font-size: 14px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; }
+  label { display: block; font-size: 13px; font-weight: 500; color: #aaa; margin-bottom: 6px; }
+  .url-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+  .url-row { display: flex; gap: 8px; align-items: center; }
+  .url-row span.num { color: #555; font-size: 13px; min-width: 20px; text-align: right; }
+  input[type="text"], input[type="number"] { background: #111; border: 1px solid #333; border-radius: 8px; color: #fff; padding: 10px 14px; font-size: 14px; width: 100%; outline: none; transition: border-color 0.2s; }
+  input:focus { border-color: #3b82f6; }
+  .url-row input { flex: 1; }
+  .url-row button.remove { background: none; border: none; color: #ef4444; font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+  .url-row button.remove:hover { background: #2a1515; }
+  .add-btn { background: #1e293b; color: #3b82f6; border: 1px dashed #334155; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  .add-btn:hover { background: #1e3a5f; border-color: #3b82f6; }
+  .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .config-item { }
+  .config-item .suffix { color: #666; font-size: 12px; margin-top: 4px; }
+  .actions { display: flex; gap: 12px; margin-top: 8px; }
+  .btn-run { background: #22c55e; color: #000; border: none; border-radius: 8px; padding: 12px 28px; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.2s; }
+  .btn-run:hover { background: #16a34a; }
+  .btn-run:disabled { background: #333; color: #666; cursor: not-allowed; }
+  .btn-run .icon { font-size: 14px; }
+  .status { margin-top: 20px; padding: 16px; background: #111; border: 1px solid #2a2a2a; border-radius: 8px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; color: #888; min-height: 40px; display: none; }
+  .status.active { display: block; }
+  .status .spinner { display: inline-block; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .results { margin-top: 20px; display: none; }
+  .results.active { display: block; }
+  .video-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .video-meta { display: flex; gap: 16px; align-items: flex-start; }
+  .video-meta .author { font-weight: 600; color: #fff; font-size: 15px; }
+  .video-meta .handle { color: #3b82f6; font-size: 13px; }
+  .video-meta .caption { color: #aaa; font-size: 13px; margin-top: 6px; line-height: 1.5; }
+  .stats { display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
+  .stat { font-size: 13px; color: #888; }
+  .stat span { color: #fff; font-weight: 600; }
+  .comments-list { display: flex; flex-direction: column; gap: 1px; }
+  .comment-item { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 14px 18px; margin-bottom: 8px; }
+  .comment-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .comment-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: #333; }
+  .comment-author { font-weight: 600; color: #fff; font-size: 13px; }
+  .comment-time { color: #555; font-size: 11px; margin-left: auto; }
+  .comment-text { color: #ccc; font-size: 14px; line-height: 1.5; }
+  .comment-footer { display: flex; gap: 16px; margin-top: 8px; font-size: 12px; color: #666; }
+  .summary-bar { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px 18px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #888; }
+  .summary-bar .count { color: #22c55e; font-weight: 700; }
+  .export-btn { background: #1e293b; color: #3b82f6; border: 1px solid #334155; border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer; }
+  .export-btn:hover { background: #1e3a5f; }
+  a.back { color: #555; text-decoration: none; font-size: 13px; }
+  a.back:hover { color: #888; }
+</style>
+</head>
+<body>
+<div class="header">
+  <a class="back" href="/">← Back</a>
+  <h1>TikTok Comment Scraper</h1>
+  <span class="badge">LIVE</span>
+</div>
+
+<div class="container">
+  <div class="card">
+    <h2>Input</h2>
+    <label>TikTok video URLs</label>
+    <div class="url-list" id="urlList">
+      <div class="url-row">
+        <span class="num">1</span>
+        <input type="text" placeholder="https://www.tiktok.com/@user/video/1234567890" />
+        <button class="remove" onclick="removeUrl(this)" title="Remove">✕</button>
+      </div>
+    </div>
+    <button class="add-btn" onclick="addUrl()">+ Add URL</button>
+  </div>
+
+  <div class="card">
+    <h2>Options</h2>
+    <div class="config-grid">
+      <div class="config-item">
+        <label>Timeout per video</label>
+        <input type="number" id="timeout" value="45" min="10" max="120" />
+        <div class="suffix">seconds</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn-run" id="runBtn" onclick="runScrape()">
+      <span class="icon">▶</span> Scrape Comments
+    </button>
+  </div>
+
+  <div class="status" id="status"></div>
+  <div class="results" id="results"></div>
+</div>
+
+<script>
+let urlCounter = 1;
+
+function addUrl() {
+  urlCounter++;
+  const row = document.createElement('div');
+  row.className = 'url-row';
+  row.innerHTML = '<span class="num">' + urlCounter + '</span><input type="text" placeholder="https://www.tiktok.com/@user/video/1234567890" /><button class="remove" onclick="removeUrl(this)" title="Remove">✕</button>';
+  document.getElementById('urlList').appendChild(row);
+  row.querySelector('input').focus();
+}
+
+function removeUrl(btn) {
+  const list = document.getElementById('urlList');
+  if (list.children.length > 1) {
+    btn.closest('.url-row').remove();
+    list.querySelectorAll('.num').forEach((n, i) => n.textContent = i + 1);
+    urlCounter = list.children.length;
+  }
+}
+
+function setStatus(msg, loading) {
+  const el = document.getElementById('status');
+  el.className = 'status active';
+  el.innerHTML = (loading ? '<span class="spinner">⏳</span> ' : '') + msg;
+}
+
+function clearStatus() {
+  document.getElementById('status').className = 'status';
+}
+
+async function runScrape() {
+  const inputs = document.querySelectorAll('#urlList input[type="text"]');
+  const urls = Array.from(inputs).map(i => i.value.trim()).filter(u => u.includes('tiktok.com'));
+  if (urls.length === 0) { alert('Enter at least one TikTok URL'); return; }
+
+  const timeout = parseInt(document.getElementById('timeout').value) * 1000;
+  const btn = document.getElementById('runBtn');
+  const resultsDiv = document.getElementById('results');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner">⏳</span> Scraping...';
+  resultsDiv.className = 'results';
+  resultsDiv.innerHTML = '';
+
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i];
+    setStatus('Scraping video ' + (i + 1) + ' of ' + urls.length + '... <br><code>' + url + '</code>', true);
+
+    try {
+      const resp = await fetch('/tiktok/comments?url=' + encodeURIComponent(url) + '&timeout=' + timeout);
+      const data = await resp.json();
+
+      if (data.error) {
+        resultsDiv.innerHTML += '<div class="card" style="border-color:#ef4444"><p style="color:#ef4444">Error: ' + data.error + '</p><p style="color:#666;font-size:12px">' + url + '</p></div>';
+        continue;
+      }
+
+      resultsDiv.className = 'results active';
+      const v = data.video || {};
+      const comments = data.comments || [];
+      const date = v.createTime ? new Date(v.createTime).toLocaleDateString() : '';
+
+      let html = '<div class="video-card"><div class="video-meta"><div>';
+      html += '<div class="author">' + esc(v.authorNickname || v.author || 'Unknown') + '</div>';
+      html += '<div class="handle">@' + esc(v.author || '') + ' · ' + date + '</div>';
+      html += '<div class="caption">' + esc(v.caption || '') + '</div>';
+      html += '</div></div>';
+      html += '<div class="stats">';
+      html += '<div class="stat">❤️ <span>' + fmt(v.likes) + '</span></div>';
+      html += '<div class="stat">💬 <span>' + fmt(v.comments) + '</span></div>';
+      html += '<div class="stat">↗️ <span>' + fmt(v.shares) + '</span></div>';
+      html += '<div class="stat">▶️ <span>' + fmt(v.plays) + '</span></div>';
+      html += '</div></div>';
+
+      html += '<div class="summary-bar"><div>Scraped <span class="count">' + comments.length + '</span> of ' + (data.totalComments || '?') + ' comments (' + (data.durationMs / 1000).toFixed(1) + 's)</div>';
+      html += '<button class="export-btn" onclick=\\'exportJson(' + JSON.stringify(JSON.stringify(data)) + ')\\'>Export JSON</button></div>';
+
+      html += '<div class="comments-list">';
+      for (const c of comments) {
+        if (!c.text && c.id === 'dom-raw') continue;
+        const cDate = c.createTime ? new Date(c.createTime).toLocaleDateString() : '';
+        html += '<div class="comment-item">';
+        html += '<div class="comment-header">';
+        if (c.authorAvatar) html += '<img class="comment-avatar" src="' + esc(c.authorAvatar) + '" onerror="this.style.display=\\'none\\'" />';
+        html += '<span class="comment-author">@' + esc(c.author || 'anon') + '</span>';
+        html += '<span class="comment-time">' + cDate + '</span>';
+        html += '</div>';
+        html += '<div class="comment-text">' + esc(c.text || '') + '</div>';
+        html += '<div class="comment-footer">';
+        html += '<span>❤️ ' + (c.likes || 0) + '</span>';
+        if (c.replyCount > 0) html += '<span>💬 ' + c.replyCount + ' replies</span>';
+        html += '</div></div>';
+      }
+      html += '</div>';
+      resultsDiv.innerHTML += html;
+
+    } catch (e) {
+      resultsDiv.className = 'results active';
+      resultsDiv.innerHTML += '<div class="card" style="border-color:#ef4444"><p style="color:#ef4444">Request failed: ' + e.message + '</p></div>';
+    }
+  }
+
+  clearStatus();
+  btn.disabled = false;
+  btn.innerHTML = '<span class="icon">▶</span> Scrape Comments';
+}
+
+function exportJson(jsonStr) {
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tiktok-comments-' + Date.now() + '.json';
+  a.click();
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function fmt(n) { if (!n) return '0'; if (n >= 1000000) return (n/1000000).toFixed(1) + 'M'; if (n >= 1000) return (n/1000).toFixed(1) + 'K'; return n.toString(); }
+</script>
+</body>
+</html>`);
+});
+
 app.get('/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
 // ── Zapier (unchanged) ────────────────────────────────────────────────────────
