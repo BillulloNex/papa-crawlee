@@ -476,9 +476,7 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
                         }
                     }
                     if (commentList.length === 0) {
-                        // Log the keys for debugging reply response structure
-                        const keys = Object.keys(json).filter(k => k !== '_extra');
-                        console.log(`[tiktok] 0 comments in response, keys: ${keys.join(', ')}, url: ${url.includes('reply') ? 'reply' : 'list'}`);
+                        console.log(`[tiktok] 0 comments in ${url.includes('reply') ? 'reply' : 'list'} response — total: ${json.total}, has_more: ${json.has_more}, status: ${json.status_code}, cursor: ${json.cursor}`);
                     } else {
                         console.log(`[tiktok] parsed ${commentList.length} comments (total: ${comments.size})`);
                     }
