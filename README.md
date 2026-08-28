@@ -1,11 +1,20 @@
 # Papa — apify.beenex.org
 
-Crawlee playground deployed via Coolify on lenovo (`http://apify.beenex.org`).
+Crawlee & Playwright scraping service deployed via Coolify on Lenovo (`http://apify.beenex.org`).
 
-- `GET /` — index
-- `GET /crawl?url=https://crawlee.dev` — CheerioCrawler smoke
-- `GET /crawl?case=books` — books.toscrape
-- `GET /health`
+## Endpoints
 
-Build: `npm run build` → `node dist/server.js` on port 3000 (Coolify `ports_exposes=3000`).
-Base: `apify/actor-node:22` (no browser). Swap to `actor-node-playwright-chrome:22` for Playwright cases.
+- `GET /` — Service landing page
+- `GET /tiktok` — Interactive Web UI for TikTok Posts & Comments scraping with CSV/JSON exports
+- `GET /tiktok/posts?handle=<HANDLE>&limit=50&timeout=60000` — Scrapes creator profile info and all videos/posts metadata
+- `GET /tiktok/comments?url=<URL>&timeout=60000` — Scrapes video details and all comments
+- `GET /zapier?limit=100&pages=1` — Zapier integration directory dump
+- `GET /crawl?url=https://crawlee.dev` — CheerioCrawler smoke test
+- `GET /crawl?case=books` — books.toscrape pagination
+- `GET /health` — Health check
+
+## Tech Stack & Architecture
+
+- **Runtime**: Node.js 22+ (TypeScript -> `tsc` -> `dist/`)
+- **Docker Base**: `apify/actor-node-playwright-chrome:22` (Headed Chrome with xvfb virtual display)
+- **Anti-Bot Bypass**: `playwright-extra` + `puppeteer-extra-plugin-stealth` + CDP network body extraction

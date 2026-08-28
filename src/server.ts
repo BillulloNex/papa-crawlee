@@ -12,19 +12,50 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 app.get('/', (_req, res) => {
     res.send(`
-        <h1>Papa Crawlee — apify.beenex.org</h1>
-        <p>Deployed on Coolify (lenovo • http://apify.beenex.org)</p>
-        <ul>
-            <li><a href="/crawl?url=https://crawlee.dev">/crawl?url=https://crawlee.dev</a> — smoke test (CheerioCrawler title)</li>
-            <li><a href="/crawl?case=books">/crawl?case=books</a> — books.toscrape (Cheerio, pagination sample)</li>
-            <li><a href="/crawl?case=quotes">/crawl?case=quotes</a> — quotes.toscrape</li>
-            <li><a href="/crawl?case=httpbin">/crawl?case=httpbin</a> — httpbin json</li>
-            <li><a href="/zapier?limit=100&pages=1">/zapier?limit=100&pages=1</a> — Zapier integration list (10014 apps)</li>
-            <li><a href="/zapier?limit=100&pages=101">/zapier?limit=100&pages=101</a> — full Zapier dump (10k)</li>
-            <li><a href="/tiktok/comments?url=https://www.tiktok.com/@arc_journal/video/7402747839643667743">/tiktok/comments</a> — TikTok comment scraper</li>
-            <li><a href="/health">/health</a></li>
-        </ul>
-        <p>See <a href="https://github.com/apify/crawlee">crawlee.dev</a> • test cases in test.md</p>
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <title>Papa Crawlee — apify.beenex.org</title>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f0f; color: #e0e0e0; padding: 40px 20px; max-width: 800px; margin: 0 auto; line-height: 1.6; }
+                h1 { color: #fff; border-bottom: 1px solid #2a2a2a; padding-bottom: 12px; }
+                a { color: #3b82f6; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+                .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 18px; margin: 16px 0; }
+                .badge { background: #22c55e; color: #000; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+                ul { padding-left: 20px; }
+                li { margin: 8px 0; }
+                code { background: #222; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 13px; }
+            </style>
+        </head>
+        <body>
+            <h1>Papa Crawlee <span class="badge">LIVE</span></h1>
+            <p>Deployed on Coolify (Lenovo • <a href="http://apify.beenex.org">apify.beenex.org</a>)</p>
+
+            <div class="card">
+                <h3>TikTok Scrapers</h3>
+                <ul>
+                    <li><a href="/tiktok"><strong>/tiktok</strong></a> — Interactive Web UI for TikTok Scrapers (Posts & Comments)</li>
+                    <li><a href="/tiktok/posts?handle=khaby.lame&limit=20">/tiktok/posts?handle=khaby.lame&limit=20</a> — Scrape user posts / videos metadata</li>
+                    <li><a href="/tiktok/comments?url=https://www.tiktok.com/@arc_journal/video/7402747839643667743">/tiktok/comments?url=...</a> — Scrape video comments</li>
+                </ul>
+            </div>
+
+            <div class="card">
+                <h3>General & Smoke Endpoints</h3>
+                <ul>
+                    <li><a href="/crawl?url=https://crawlee.dev">/crawl?url=https://crawlee.dev</a> — CheerioCrawler smoke test</li>
+                    <li><a href="/crawl?case=books">/crawl?case=books</a> — books.toscrape pagination</li>
+                    <li><a href="/crawl?case=quotes">/crawl?case=quotes</a> — quotes.toscrape router</li>
+                    <li><a href="/crawl?case=httpbin">/crawl?case=httpbin</a> — httpbin json</li>
+                    <li><a href="/zapier?limit=100&pages=1">/zapier?limit=100&pages=1</a> — Zapier integration list (10,014 apps)</li>
+                    <li><a href="/health">/health</a> — Health check</li>
+                </ul>
+            </div>
+            <p style="color: #666; font-size: 13px;">Powered by Crawlee + Playwright Stealth + xvfb</p>
+        </body>
+        </html>
     `);
 });
 
@@ -35,16 +66,25 @@ app.get('/tiktok', (_req, res) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TikTok Comment Scraper — Papa Crawlee</title>
+<title>TikTok Scraper Suite — Papa Crawlee</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; padding: 0; }
   .header { background: #1a1a1a; border-bottom: 1px solid #2a2a2a; padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
   .header h1 { font-size: 18px; font-weight: 600; color: #fff; }
   .header .badge { background: #22c55e; color: #000; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
-  .container { max-width: 720px; margin: 32px auto; padding: 0 24px; }
-  .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
-  .card h2 { font-size: 14px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 16px; }
+  .container { max-width: 900px; margin: 28px auto; padding: 0 20px; }
+  
+  .tabs { display: flex; gap: 8px; border-bottom: 1px solid #2a2a2a; margin-bottom: 20px; }
+  .tab-btn { background: transparent; border: none; color: #888; font-size: 14px; font-weight: 600; padding: 10px 18px; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; }
+  .tab-btn:hover { color: #fff; }
+  .tab-btn.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  .card h2 { font-size: 13px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
   label { display: block; font-size: 13px; font-weight: 500; color: #aaa; margin-bottom: 6px; }
   .url-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
   .url-row { display: flex; gap: 8px; align-items: center; }
@@ -57,19 +97,47 @@ app.get('/tiktok', (_req, res) => {
   .add-btn { background: #1e293b; color: #3b82f6; border: 1px dashed #334155; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
   .add-btn:hover { background: #1e3a5f; border-color: #3b82f6; }
   .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  .config-item { }
   .config-item .suffix { color: #666; font-size: 12px; margin-top: 4px; }
   .actions { display: flex; gap: 12px; margin-top: 8px; }
   .btn-run { background: #22c55e; color: #000; border: none; border-radius: 8px; padding: 12px 28px; font-size: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.2s; }
   .btn-run:hover { background: #16a34a; }
   .btn-run:disabled { background: #333; color: #666; cursor: not-allowed; }
-  .btn-run .icon { font-size: 14px; }
   .status { margin-top: 20px; padding: 16px; background: #111; border: 1px solid #2a2a2a; border-radius: 8px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; color: #888; min-height: 40px; display: none; }
   .status.active { display: block; }
   .status .spinner { display: inline-block; animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .results { margin-top: 20px; display: none; }
   .results.active { display: block; }
+
+  /* User Profile Header */
+  .profile-banner { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; margin-bottom: 20px; display: flex; gap: 20px; align-items: center; }
+  .profile-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; background: #333; border: 2px solid #3b82f6; }
+  .profile-info { flex: 1; }
+  .profile-name { font-size: 18px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 6px; }
+  .profile-handle { color: #3b82f6; font-size: 14px; margin-top: 2px; }
+  .profile-bio { color: #aaa; font-size: 13px; margin-top: 8px; line-height: 1.4; }
+  .profile-stats { display: flex; gap: 20px; margin-top: 12px; }
+  .p-stat { font-size: 13px; color: #888; }
+  .p-stat span { color: #fff; font-weight: 700; }
+  .verified-badge { background: #3b82f6; color: #fff; border-radius: 50%; font-size: 11px; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; }
+
+  /* Posts Grid */
+  .posts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-top: 16px; }
+  .post-card { background: #161616; border: 1px solid #262626; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; transition: transform 0.15s, border-color 0.15s; }
+  .post-card:hover { transform: translateY(-2px); border-color: #3b82f6; }
+  .post-cover-wrapper { position: relative; width: 100%; aspect-ratio: 9/16; background: #222; max-height: 280px; overflow: hidden; }
+  .post-cover { width: 100%; height: 100%; object-fit: cover; }
+  .post-duration { position: absolute; bottom: 8px; right: 8px; background: rgba(0,0,0,0.75); color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; }
+  .post-pinned { position: absolute; top: 8px; left: 8px; background: #ef4444; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; text-transform: uppercase; }
+  .post-body { padding: 12px 14px; display: flex; flex-direction: column; flex: 1; justify-content: space-between; }
+  .post-caption { font-size: 13px; color: #ddd; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 10px; }
+  .post-date { font-size: 11px; color: #666; margin-bottom: 8px; }
+  .post-stats { display: flex; justify-content: space-between; font-size: 12px; color: #888; border-top: 1px solid #222; padding-top: 8px; }
+  .post-stat { display: flex; align-items: center; gap: 4px; }
+  .post-link { display: block; text-align: center; background: #1e293b; color: #3b82f6; padding: 6px; border-radius: 6px; font-size: 12px; text-decoration: none; margin-top: 10px; font-weight: 500; }
+  .post-link:hover { background: #1e3a5f; }
+
+  /* Comments UI items */
   .video-card { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
   .video-meta { display: flex; gap: 16px; align-items: flex-start; }
   .video-meta .author { font-weight: 600; color: #fff; font-size: 15px; }
@@ -78,15 +146,16 @@ app.get('/tiktok', (_req, res) => {
   .stats { display: flex; gap: 20px; margin-top: 12px; flex-wrap: wrap; }
   .stat { font-size: 13px; color: #888; }
   .stat span { color: #fff; font-weight: 600; }
-  .comments-list { display: flex; flex-direction: column; gap: 1px; }
-  .comment-item { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 14px 18px; margin-bottom: 8px; }
+  .comments-list { display: flex; flex-direction: column; gap: 8px; }
+  .comment-item { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 10px; padding: 14px 18px; }
   .comment-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
   .comment-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; background: #333; }
   .comment-author { font-weight: 600; color: #fff; font-size: 13px; }
   .comment-time { color: #555; font-size: 11px; margin-left: auto; }
   .comment-text { color: #ccc; font-size: 14px; line-height: 1.5; }
   .comment-footer { display: flex; gap: 16px; margin-top: 8px; font-size: 12px; color: #666; }
-  .summary-bar { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px 18px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #888; }
+  
+  .summary-bar { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 8px; padding: 12px 18px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #888; flex-wrap: wrap; gap: 10px; }
   .summary-bar .count { color: #22c55e; font-weight: 700; }
   .export-btn { background: #1e293b; color: #3b82f6; border: 1px solid #334155; border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer; }
   .export-btn:hover { background: #1e3a5f; }
@@ -97,48 +166,206 @@ app.get('/tiktok', (_req, res) => {
 <body>
 <div class="header">
   <a class="back" href="/">← Back</a>
-  <h1>TikTok Comment Scraper</h1>
+  <h1>TikTok Scraper Suite</h1>
   <span class="badge">LIVE</span>
 </div>
 
 <div class="container">
-  <div class="card">
-    <h2>Input</h2>
-    <label>TikTok video URLs</label>
-    <div class="url-list" id="urlList">
-      <div class="url-row">
-        <span class="num">1</span>
-        <input type="text" placeholder="https://www.tiktok.com/@user/video/1234567890" />
-        <button class="remove" onclick="removeUrl(this)" title="Remove">✕</button>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('postsTab', this)">📹 User Posts & Videos Scraper</button>
+    <button class="tab-btn" onclick="switchTab('commentsTab', this)">💬 Video Comments Scraper</button>
+  </div>
+
+  <!-- TAB 1: USER POSTS SCRAPER -->
+  <div id="postsTab" class="tab-content active">
+    <div class="card">
+      <h2>Target TikTok Creator Handle</h2>
+      <label>Username or Profile URL</label>
+      <input type="text" id="postHandle" placeholder="@khaby.lame or charlidamelio or https://www.tiktok.com/@mrbeast" value="@khaby.lame" />
+    </div>
+
+    <div class="card">
+      <h2>Options</h2>
+      <div class="config-grid">
+        <div class="config-item">
+          <label>Max Videos to Scrape</label>
+          <input type="number" id="postLimit" value="30" min="5" max="200" />
+          <div class="suffix">videos (max 200)</div>
+        </div>
+        <div class="config-item">
+          <label>Timeout</label>
+          <input type="number" id="postTimeout" value="60" min="15" max="180" />
+          <div class="suffix">seconds</div>
+        </div>
       </div>
     </div>
-    <button class="add-btn" onclick="addUrl()">+ Add URL</button>
+
+    <div class="actions">
+      <button class="btn-run" id="runPostsBtn" onclick="runPostsScrape()">
+        <span class="icon">▶</span> Scrape Creator Posts
+      </button>
+    </div>
+
+    <div class="status" id="postsStatus"></div>
+    <div class="results" id="postsResults"></div>
   </div>
 
-  <div class="card">
-    <h2>Options</h2>
-    <div class="config-grid">
-      <div class="config-item">
-        <label>Timeout per video</label>
-        <input type="number" id="timeout" value="45" min="10" max="120" />
-        <div class="suffix">seconds</div>
+  <!-- TAB 2: COMMENTS SCRAPER -->
+  <div id="commentsTab" class="tab-content">
+    <div class="card">
+      <h2>Input</h2>
+      <label>TikTok video URLs</label>
+      <div class="url-list" id="urlList">
+        <div class="url-row">
+          <span class="num">1</span>
+          <input type="text" placeholder="https://www.tiktok.com/@user/video/1234567890" value="https://www.tiktok.com/@arc_journal/video/7402747839643667743" />
+          <button class="remove" onclick="removeUrl(this)" title="Remove">✕</button>
+        </div>
+      </div>
+      <button class="add-btn" onclick="addUrl()">+ Add URL</button>
+    </div>
+
+    <div class="card">
+      <h2>Options</h2>
+      <div class="config-grid">
+        <div class="config-item">
+          <label>Timeout per video</label>
+          <input type="number" id="commentTimeout" value="45" min="10" max="120" />
+          <div class="suffix">seconds</div>
+        </div>
       </div>
     </div>
-  </div>
 
-  <div class="actions">
-    <button class="btn-run" id="runBtn" onclick="runScrape()">
-      <span class="icon">▶</span> Scrape Comments
-    </button>
-  </div>
+    <div class="actions">
+      <button class="btn-run" id="runCommentsBtn" onclick="runCommentsScrape()">
+        <span class="icon">▶</span> Scrape Comments
+      </button>
+    </div>
 
-  <div class="status" id="status"></div>
-  <div class="results" id="results"></div>
+    <div class="status" id="commentsStatus"></div>
+    <div class="results" id="commentsResults"></div>
+  </div>
 </div>
 
 <script>
-let urlCounter = 1;
+function switchTab(tabId, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
 
+// ── Tab 1: User Posts Logic ──────────────────────────────────────────────────
+async function runPostsScrape() {
+  const handleInput = document.getElementById('postHandle').value.trim();
+  if (!handleInput) { alert('Please enter a TikTok handle or profile URL'); return; }
+
+  const limit = parseInt(document.getElementById('postLimit').value, 10) || 30;
+  const timeout = (parseInt(document.getElementById('postTimeout').value, 10) || 60) * 1000;
+
+  const btn = document.getElementById('runPostsBtn');
+  const statusEl = document.getElementById('postsStatus');
+  const resultsEl = document.getElementById('postsResults');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner">⏳</span> Scraping profile...';
+  statusEl.className = 'status active';
+  statusEl.innerHTML = '<span class="spinner">⏳</span> Loading profile and fetching videos for <strong>' + esc(handleInput) + '</strong>...';
+  resultsEl.className = 'results';
+  resultsEl.innerHTML = '';
+
+  try {
+    const url = '/tiktok/posts?handle=' + encodeURIComponent(handleInput) + '&limit=' + limit + '&timeout=' + timeout;
+    const resp = await fetch(url);
+    const data = await resp.json();
+
+    if (data.error) {
+      statusEl.className = 'status active';
+      statusEl.innerHTML = '❌ Error: ' + esc(data.error);
+      btn.disabled = false;
+      btn.innerHTML = '<span class="icon">▶</span> Scrape Creator Posts';
+      return;
+    }
+
+    const u = data.user || {};
+    const posts = data.posts || [];
+    
+    let html = '';
+    
+    // Profile Banner
+    html += '<div class="profile-banner">';
+    if (u.avatar) {
+      html += '<img class="profile-avatar" src="' + esc(u.avatar) + '" onerror="this.style.display=\\'none\\'" />';
+    }
+    html += '<div class="profile-info">';
+    html += '<div class="profile-name">' + esc(u.nickname || u.handle || 'Creator') + (u.verified ? ' <span class="verified-badge">✓</span>' : '') + '</div>';
+    html += '<div class="profile-handle">@' + esc(u.handle || '') + '</div>';
+    if (u.bio) html += '<div class="profile-bio">' + esc(u.bio) + '</div>';
+    html += '<div class="profile-stats">';
+    html += '<div class="p-stat">Followers: <span>' + fmt(u.followerCount) + '</span></div>';
+    html += '<div class="p-stat">Following: <span>' + fmt(u.followingCount) + '</span></div>';
+    html += '<div class="p-stat">Likes: <span>' + fmt(u.heartCount) + '</span></div>';
+    html += '<div class="p-stat">Total Videos: <span>' + fmt(u.videoCount) + '</span></div>';
+    html += '</div></div></div>';
+
+    // Summary bar & export
+    html += '<div class="summary-bar">';
+    html += '<div>Scraped <span class="count">' + posts.length + '</span> videos in ' + (data.durationMs / 1000).toFixed(1) + 's</div>';
+    html += '<div style="display:flex;gap:8px;">';
+    html += '<button class="export-btn" onclick=\\'exportJson(' + JSON.stringify(JSON.stringify(data)) + ', "tiktok-posts-' + esc(u.handle || 'user') + '")\\'>Export JSON</button>';
+    html += '<button class="export-btn" onclick=\\'exportCsv(' + JSON.stringify(JSON.stringify(posts)) + ', "tiktok-posts-' + esc(u.handle || 'user') + '")\\'>Export CSV</button>';
+    html += '</div></div>';
+
+    // Posts Grid
+    html += '<div class="posts-grid">';
+    for (const p of posts) {
+      const date = p.createTime ? new Date(p.createTime).toLocaleDateString() : '';
+      const stats = p.stats || {};
+      html += '<div class="post-card">';
+      
+      html += '<div class="post-cover-wrapper">';
+      if (p.coverUrl) {
+        html += '<img class="post-cover" src="' + esc(p.coverUrl) + '" loading="lazy" />';
+      }
+      if (p.isPinned) html += '<span class="post-pinned">PINNED</span>';
+      if (p.duration) html += '<span class="post-duration">' + p.duration + 's</span>';
+      html += '</div>';
+
+      html += '<div class="post-body">';
+      html += '<div>';
+      html += '<div class="post-caption">' + esc(p.caption || '(No caption)') + '</div>';
+      html += '<div class="post-date">📅 ' + date + '</div>';
+      html += '</div>';
+
+      html += '<div>';
+      html += '<div class="post-stats">';
+      html += '<div class="post-stat" title="Views">▶️ ' + fmt(stats.plays) + '</div>';
+      html += '<div class="post-stat" title="Likes">❤️ ' + fmt(stats.likes) + '</div>';
+      html += '<div class="post-stat" title="Comments">💬 ' + fmt(stats.comments) + '</div>';
+      html += '<div class="post-stat" title="Shares">↗️ ' + fmt(stats.shares) + '</div>';
+      html += '</div>';
+      html += '<a class="post-link" href="' + esc(p.url) + '" target="_blank" rel="noopener">Open on TikTok ↗</a>';
+      html += '</div>';
+
+      html += '</div></div>';
+    }
+    html += '</div>';
+
+    statusEl.className = 'status';
+    resultsEl.className = 'results active';
+    resultsEl.innerHTML = html;
+
+  } catch (e) {
+    statusEl.className = 'status active';
+    statusEl.innerHTML = '❌ Request failed: ' + esc(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="icon">▶</span> Scrape Creator Posts';
+  }
+}
+
+// ── Tab 2: Comments Logic ────────────────────────────────────────────────────
+let urlCounter = 1;
 function addUrl() {
   urlCounter++;
   const row = document.createElement('div');
@@ -157,39 +384,32 @@ function removeUrl(btn) {
   }
 }
 
-function setStatus(msg, loading) {
-  const el = document.getElementById('status');
-  el.className = 'status active';
-  el.innerHTML = (loading ? '<span class="spinner">⏳</span> ' : '') + msg;
-}
-
-function clearStatus() {
-  document.getElementById('status').className = 'status';
-}
-
-async function runScrape() {
+async function runCommentsScrape() {
   const inputs = document.querySelectorAll('#urlList input[type="text"]');
   const urls = Array.from(inputs).map(i => i.value.trim()).filter(u => u.includes('tiktok.com'));
   if (urls.length === 0) { alert('Enter at least one TikTok URL'); return; }
 
-  const timeout = parseInt(document.getElementById('timeout').value) * 1000;
-  const btn = document.getElementById('runBtn');
-  const resultsDiv = document.getElementById('results');
+  const timeout = parseInt(document.getElementById('commentTimeout').value) * 1000;
+  const btn = document.getElementById('runCommentsBtn');
+  const statusEl = document.getElementById('commentsStatus');
+  const resultsDiv = document.getElementById('commentsResults');
+  
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner">⏳</span> Scraping...';
+  statusEl.className = 'status active';
   resultsDiv.className = 'results';
   resultsDiv.innerHTML = '';
 
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
-    setStatus('Scraping video ' + (i + 1) + ' of ' + urls.length + '... <br><code>' + url + '</code>', true);
+    statusEl.innerHTML = '<span class="spinner">⏳</span> Scraping video ' + (i + 1) + ' of ' + urls.length + '... <br><code>' + esc(url) + '</code>';
 
     try {
       const resp = await fetch('/tiktok/comments?url=' + encodeURIComponent(url) + '&timeout=' + timeout);
       const data = await resp.json();
 
       if (data.error) {
-        resultsDiv.innerHTML += '<div class="card" style="border-color:#ef4444"><p style="color:#ef4444">Error: ' + data.error + '</p><p style="color:#666;font-size:12px">' + url + '</p></div>';
+        resultsDiv.innerHTML += '<div class="card" style="border-color:#ef4444"><p style="color:#ef4444">Error: ' + esc(data.error) + '</p><p style="color:#666;font-size:12px">' + esc(url) + '</p></div>';
         continue;
       }
 
@@ -211,7 +431,7 @@ async function runScrape() {
       html += '</div></div>';
 
       html += '<div class="summary-bar"><div>Scraped <span class="count">' + comments.length + '</span> of ' + (data.totalComments || '?') + ' comments (' + (data.durationMs / 1000).toFixed(1) + 's)</div>';
-      html += '<button class="export-btn" onclick=\\'exportJson(' + JSON.stringify(JSON.stringify(data)) + ')\\'>Export JSON</button></div>';
+      html += '<button class="export-btn" onclick=\\'exportJson(' + JSON.stringify(JSON.stringify(data)) + ', "tiktok-comments")\\'>Export JSON</button></div>';
 
       html += '<div class="comments-list">';
       for (const c of comments) {
@@ -234,25 +454,62 @@ async function runScrape() {
 
     } catch (e) {
       resultsDiv.className = 'results active';
-      resultsDiv.innerHTML += '<div class="card" style="border-color:#ef4444"><p style="color:#ef4444">Request failed: ' + e.message + '</p></div>';
+      resultsDiv.innerHTML += '<div class="card" style="border-color:#ef4444"><p style="color:#ef4444">Request failed: ' + esc(e.message) + '</p></div>';
     }
   }
 
-  clearStatus();
+  statusEl.className = 'status';
   btn.disabled = false;
   btn.innerHTML = '<span class="icon">▶</span> Scrape Comments';
 }
 
-function exportJson(jsonStr) {
+function exportJson(jsonStr, filenamePrefix) {
   const blob = new Blob([jsonStr], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'tiktok-comments-' + Date.now() + '.json';
+  a.download = (filenamePrefix || 'tiktok-data') + '-' + Date.now() + '.json';
   a.click();
 }
 
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-function fmt(n) { if (!n) return '0'; if (n >= 1000000) return (n/1000000).toFixed(1) + 'M'; if (n >= 1000) return (n/1000).toFixed(1) + 'K'; return n.toString(); }
+function exportCsv(postsJsonStr, filenamePrefix) {
+  try {
+    const posts = JSON.parse(postsJsonStr);
+    if (!posts || posts.length === 0) { alert('No posts to export'); return; }
+    
+    const headers = ['id', 'url', 'caption', 'createTime', 'duration', 'likes', 'comments', 'shares', 'plays', 'bookmarks', 'isPinned', 'coverUrl'];
+    const rows = [headers.join(',')];
+    
+    for (const p of posts) {
+      const stats = p.stats || {};
+      const row = [
+        '"' + (p.id || '').replace(/"/g, '""') + '"',
+        '"' + (p.url || '').replace(/"/g, '""') + '"',
+        '"' + (p.caption || '').replace(/"/g, '""') + '"',
+        '"' + (p.createTime || '') + '"',
+        p.duration || 0,
+        stats.likes || 0,
+        stats.comments || 0,
+        stats.shares || 0,
+        stats.plays || 0,
+        stats.bookmarks || 0,
+        p.isPinned ? 'true' : 'false',
+        '"' + (p.coverUrl || '').replace(/"/g, '""') + '"',
+      ];
+      rows.push(row.join(','));
+    }
+    
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (filenamePrefix || 'tiktok-posts') + '-' + Date.now() + '.csv';
+    a.click();
+  } catch (e) {
+    alert('CSV Export failed: ' + e.message);
+  }
+}
+
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+function fmt(n) { if (!n && n !== 0) return '0'; if (n >= 1000000) return (n/1000000).toFixed(1) + 'M'; if (n >= 1000) return (n/1000).toFixed(1) + 'K'; return n.toString(); }
 </script>
 </body>
 </html>`);
@@ -260,7 +517,7 @@ function fmt(n) { if (!n) return '0'; if (n >= 1000000) return (n/1000000).toFix
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
 
-// ── Zapier (unchanged) ────────────────────────────────────────────────────────
+// ── Zapier Endpoints ──────────────────────────────────────────────────────────
 
 let zapierCache: { key: string; data: any[]; ts: number } | null = null;
 const ZAPIER_CACHE_MS = 60 * 60 * 1000;
@@ -320,29 +577,51 @@ app.get('/zapier', async (req, res) => {
     }
 });
 
-app.get('/zapier-simple', async (_req, res) => {
-    try {
-        const apps = await fetchZapierApps(100, 101);
-        const simple = apps.map((a: any) => ({ name: a.name, functionality: a.description, scope: a.categories, url: a.url }));
-        res.setHeader('Cache-Control', 'public, max-age=3600');
-        res.json({ count: simple.length, apps: simple });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
-});
+// ── TikTok Interfaces ─────────────────────────────────────────────────────────
 
-app.get('/zapier-names', async (_req, res) => {
-    try {
-        const apps = await fetchZapierApps(100, 101);
-        res.setHeader('Content-Type', 'text/plain');
-        res.setHeader('Cache-Control', 'public, max-age=3600');
-        res.send(apps.map((a: any) => a.name).join('\n'));
-    } catch (e: any) {
-        res.status(500).send(String(e.message));
-    }
-});
+interface TikTokUser {
+    id: string;
+    handle: string;
+    nickname: string;
+    avatar: string;
+    bio: string;
+    bioLink?: string;
+    verified: boolean;
+    followerCount: number;
+    followingCount: number;
+    heartCount: number;
+    videoCount: number;
+}
 
-// ── TikTok comment scraper ─────────────────────────────────────────────────────
+interface TikTokPost {
+    id: string;
+    url: string;
+    caption: string;
+    createTime: string;
+    duration: number;
+    coverUrl: string;
+    stats: {
+        likes: number;
+        comments: number;
+        shares: number;
+        plays: number;
+        bookmarks: number;
+    };
+    author: {
+        handle: string;
+        nickname: string;
+        avatar: string;
+        verified: boolean;
+    };
+    music?: {
+        id: string;
+        title: string;
+        author: string;
+        isOriginal: boolean;
+    };
+    isPinned: boolean;
+    hashtags?: string[];
+}
 
 interface TikTokComment {
     id: string;
@@ -398,20 +677,99 @@ function parseVideoMeta(itemStruct: any): TikTokVideo {
     };
 }
 
-async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promise<{
-    video: TikTokVideo | null;
-    comments: TikTokComment[];
+function parsePostItem(item: any): TikTokPost | null {
+    if (!item || !item.id) return null;
+    const authorUniqueId = item.author?.uniqueId || item.author?.unique_id || item.authorName || '';
+    const desc = item.desc || item.title || '';
+    
+    // Extract hashtags from challenges or textExtra or desc regex
+    const hashtags: string[] = [];
+    if (Array.isArray(item.challenges)) {
+        item.challenges.forEach((ch: any) => { if (ch.title) hashtags.push(ch.title); });
+    } else if (Array.isArray(item.textExtra)) {
+        item.textExtra.forEach((te: any) => { if (te.hashtagName) hashtags.push(te.hashtagName); });
+    }
+    if (hashtags.length === 0 && desc) {
+        const matches = desc.match(/#(\w+)/g);
+        if (matches) matches.forEach((m: string) => hashtags.push(m.replace('#', '')));
+    }
+
+    return {
+        id: String(item.id),
+        url: `https://www.tiktok.com/@${authorUniqueId}/video/${item.id}`,
+        caption: desc,
+        createTime: item.createTime ? new Date(Number(item.createTime) * 1000).toISOString() : new Date().toISOString(),
+        duration: Number(item.video?.duration || 0),
+        coverUrl: item.video?.cover || item.video?.originCover || item.video?.dynamicCover || '',
+        stats: {
+            likes: Number(item.stats?.diggCount ?? item.stats?.digg_count ?? 0),
+            comments: Number(item.stats?.commentCount ?? item.stats?.comment_count ?? 0),
+            shares: Number(item.stats?.shareCount ?? item.stats?.share_count ?? 0),
+            plays: Number(item.stats?.playCount ?? item.stats?.play_count ?? 0),
+            bookmarks: Number(item.stats?.collectCount ?? item.stats?.collect_count ?? 0),
+        },
+        author: {
+            handle: authorUniqueId,
+            nickname: item.author?.nickname || '',
+            avatar: item.author?.avatarThumb || item.author?.avatar_thumb?.url_list?.[0] || '',
+            verified: !!(item.author?.verified || item.author?.customVerify),
+        },
+        music: item.music ? {
+            id: String(item.music.id || ''),
+            title: item.music.title || '',
+            author: item.music.authorName || item.music.author || '',
+            isOriginal: !!item.music.original,
+        } : undefined,
+        isPinned: !!(item.isPinnedItem || item.isTop || item.item_control?.show_pin_tag),
+        hashtags: Array.from(new Set(hashtags)),
+    };
+}
+
+function normalizeTikTokHandle(raw: string): string {
+    let clean = raw.trim();
+    if (clean.startsWith('http://') || clean.startsWith('https://')) {
+        try {
+            const parsedUrl = new URL(clean);
+            const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
+            const userPart = pathParts.find(p => p.startsWith('@'));
+            if (userPart) {
+                clean = userPart.replace('@', '');
+            } else if (pathParts.length > 0) {
+                clean = pathParts[0].replace('@', '');
+            }
+        } catch {
+            clean = clean.replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/, '').split('/')[0].split('?')[0];
+        }
+    }
+    return clean.replace(/^@/, '').trim();
+}
+
+// ── Scraper: TikTok User Profile & Posts ──────────────────────────────────────
+
+async function scrapeTikTokUserPosts(
+    rawHandle: string,
+    maxPosts = 50,
+    timeoutMs = 60000,
+): Promise<{
+    user: TikTokUser | null;
+    posts: TikTokPost[];
     durationMs: number;
     error?: string;
 }> {
     const start = Date.now();
-    const comments = new Map<string, TikTokComment>();
-    let video: TikTokVideo | null = null;
+    const handle = normalizeTikTokHandle(rawHandle);
+    if (!handle) {
+        return { user: null, posts: [], durationMs: 0, error: 'Invalid or empty TikTok handle' };
+    }
+
+    const targetUrl = `https://www.tiktok.com/@${handle}`;
+    const postsMap = new Map<string, TikTokPost>();
+    let user: TikTokUser | null = null;
     let browser;
 
     try {
         browser = await chromium.launch({
-            headless: false, // Use headed mode with xvfb virtual display — much harder for TikTok to detect
+            headless: false, // Headed Chrome inside xvfb
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
@@ -433,14 +791,285 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
 
         const page = await context.newPage();
 
-        // Track all API URLs for debugging
-        const apiUrls: string[] = [];
-
-        // Use CDP (Chrome DevTools Protocol) to capture response bodies
+        // Attach CDP session to capture network response bodies for /api/post/item_list/
         const cdp = await context.newCDPSession(page);
         await cdp.send('Network.enable');
 
-        // Track request IDs → URLs (responseReceived fires before body is ready)
+        const requestUrls = new Map<string, string>();
+
+        cdp.on('Network.responseReceived', (event: any) => {
+            const url = event.response.url;
+            if (url.includes('tiktok.com') && (url.includes('/api/post/item_list') || url.includes('/api/user/detail') || url.includes('item_list'))) {
+                requestUrls.set(event.requestId, url);
+            }
+        });
+
+        cdp.on('Network.loadingFinished', async (event: any) => {
+            const url = requestUrls.get(event.requestId);
+            if (!url) return;
+            requestUrls.delete(event.requestId);
+
+            try {
+                const { body, base64Encoded } = await cdp.send('Network.getResponseBody', {
+                    requestId: event.requestId,
+                });
+                const bodyText = base64Encoded ? Buffer.from(body, 'base64').toString('utf-8') : body;
+                if (bodyText && bodyText.length > 0) {
+                    const json = JSON.parse(bodyText);
+                    const list = json.itemList || json.items || json.data?.itemList || [];
+                    if (Array.isArray(list)) {
+                        for (const item of list) {
+                            const parsed = parsePostItem(item);
+                            if (parsed && parsed.id) {
+                                postsMap.set(parsed.id, parsed);
+                            }
+                        }
+                        console.log(`[tiktok-posts] CDP captured ${list.length} posts from item_list (total: ${postsMap.size})`);
+                    }
+                }
+            } catch (e: any) {
+                // Ignore transient CDP body read errors
+            }
+        });
+
+        console.log(`[tiktok-posts] navigating to ${targetUrl}`);
+        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 });
+
+        // 1. Parse rehydration data from SSR HTML
+        try {
+            const rehydrationData = await page.evaluate(() => {
+                const script = document.querySelector('#__UNIVERSAL_DATA_FOR_REHYDRATION__');
+                if (script?.textContent) {
+                    try { return JSON.parse(script.textContent); } catch { return null; }
+                }
+                const sigi = (window as any)['SIGI_STATE'];
+                if (sigi) return { SIGI_STATE: sigi };
+                return null;
+            });
+
+            if (rehydrationData) {
+                const scope = rehydrationData['__DEFAULT_SCOPE__'] || {};
+                const userDetail = scope['webapp.user-detail'] || scope['webapp.user_detail'] || {};
+                const userInfo = userDetail.userInfo || {};
+                const rawUser = userInfo.user || {};
+                const rawStats = userInfo.stats || {};
+
+                if (rawUser.id || rawUser.uniqueId) {
+                    user = {
+                        id: String(rawUser.id || ''),
+                        handle: rawUser.uniqueId || handle,
+                        nickname: rawUser.nickname || '',
+                        avatar: rawUser.avatarLarger || rawUser.avatarMedium || rawUser.avatarThumb || '',
+                        bio: rawUser.signature || '',
+                        bioLink: rawUser.bioLink?.link || '',
+                        verified: !!rawUser.verified,
+                        followerCount: Number(rawStats.followerCount || 0),
+                        followingCount: Number(rawStats.followingCount || 0),
+                        heartCount: Number(rawStats.heartCount || rawStats.heart || 0),
+                        videoCount: Number(rawStats.videoCount || 0),
+                    };
+                    console.log(`[tiktok-posts] extracted user @${user.handle} (${user.followerCount} followers)`);
+                }
+
+                // Initial batch of items from SSR
+                const rawItems = userDetail.itemList || userDetail.items || [];
+                if (Array.isArray(rawItems)) {
+                    for (const item of rawItems) {
+                        const parsed = parsePostItem(item);
+                        if (parsed && parsed.id) {
+                            postsMap.set(parsed.id, parsed);
+                        }
+                    }
+                }
+
+                // Also check SIGI_STATE ItemModule
+                if (rehydrationData.SIGI_STATE?.ItemModule) {
+                    const itemModule = rehydrationData.SIGI_STATE.ItemModule;
+                    for (const item of Object.values(itemModule)) {
+                        const parsed = parsePostItem(item);
+                        if (parsed && parsed.id) {
+                            postsMap.set(parsed.id, parsed);
+                        }
+                    }
+                }
+                console.log(`[tiktok-posts] posts from SSR: ${postsMap.size}`);
+            }
+        } catch (e: any) {
+            console.log(`[tiktok-posts] rehydration parse failed: ${e.message}`);
+        }
+
+        // 2. Auto-scroll to load more posts up to maxPosts
+        const deadline = Date.now() + timeoutMs;
+        let staleCycles = 0;
+        const MAX_STALE_CYCLES = 5;
+
+        while (Date.now() < deadline && postsMap.size < maxPosts && staleCycles < MAX_STALE_CYCLES) {
+            const prevCount = postsMap.size;
+
+            // Scroll down
+            await page.evaluate(() => {
+                window.scrollBy({ top: 1800, behavior: 'smooth' });
+            });
+
+            await page.waitForTimeout(2000);
+
+            // Supplementary DOM extraction for rendered video tiles
+            try {
+                const domPosts = await page.evaluate((currentHandle) => {
+                    const items: any[] = [];
+                    const postElements = document.querySelectorAll('[data-e2e="user-post-item"]');
+                    postElements.forEach((el) => {
+                        const linkEl = el.querySelector('a[href*="/video/"]');
+                        const imgEl = el.querySelector('img');
+                        const viewsEl = el.querySelector('[data-e2e="video-views"]');
+                        const href = linkEl?.getAttribute('href') || '';
+                        const idMatch = href.match(/\/video\/(\d+)/);
+                        if (idMatch && idMatch[1]) {
+                            const id = idMatch[1];
+                            const viewsText = viewsEl?.textContent?.trim() || '0';
+                            items.push({
+                                id,
+                                url: href.startsWith('http') ? href : `https://www.tiktok.com${href}`,
+                                cover: imgEl?.src || '',
+                                title: imgEl?.alt || linkEl?.getAttribute('title') || '',
+                                viewsText,
+                            });
+                        }
+                    });
+                    return items;
+                }, handle);
+
+                for (const dp of domPosts) {
+                    if (!postsMap.has(dp.id)) {
+                        postsMap.set(dp.id, {
+                            id: dp.id,
+                            url: dp.url,
+                            caption: dp.title || '',
+                            createTime: '',
+                            duration: 0,
+                            coverUrl: dp.cover || '',
+                            stats: {
+                                likes: 0,
+                                comments: 0,
+                                shares: 0,
+                                plays: 0,
+                                bookmarks: 0,
+                            },
+                            author: {
+                                handle: user?.handle || handle,
+                                nickname: user?.nickname || '',
+                                avatar: user?.avatar || '',
+                                verified: user?.verified || false,
+                            },
+                            isPinned: false,
+                        });
+                    }
+                }
+            } catch {
+                // Ignore DOM parse errors
+            }
+
+            if (postsMap.size === prevCount) {
+                staleCycles++;
+                // Nudge scroll to bottom
+                await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+                await page.waitForTimeout(2500);
+            } else {
+                staleCycles = 0;
+            }
+        }
+
+        await context.close();
+    } catch (e: any) {
+        console.error(`[tiktok-posts] error: ${e.message}`);
+        return {
+            user,
+            posts: Array.from(postsMap.values()).slice(0, maxPosts),
+            durationMs: Date.now() - start,
+            error: e.message,
+        };
+    } finally {
+        if (browser) await browser.close().catch(() => {});
+    }
+
+    const postsArray = Array.from(postsMap.values()).slice(0, maxPosts);
+
+    return {
+        user,
+        posts: postsArray,
+        durationMs: Date.now() - start,
+    };
+}
+
+// ── API: TikTok User Posts ───────────────────────────────────────────────────
+
+app.get('/tiktok/posts', async (req, res) => {
+    const handle = (req.query.handle as string) || (req.query.user as string) || (req.query.url as string);
+    if (!handle) {
+        return res.status(400).json({
+            error: 'Missing ?handle= parameter. Provide a TikTok handle e.g. /tiktok/posts?handle=khaby.lame',
+        });
+    }
+
+    const limit = Math.min(parseInt((req.query.limit as string) || '50', 10), 200);
+    const timeout = Math.min(parseInt((req.query.timeout as string) || '60000', 10), 180000);
+
+    try {
+        console.log(`[tiktok-posts] request for @${handle} (limit: ${limit})`);
+        const result = await scrapeTikTokUserPosts(handle, limit, timeout);
+        res.json({
+            user: result.user,
+            posts: result.posts,
+            totalScraped: result.posts.length,
+            durationMs: result.durationMs,
+            ...(result.error ? { error: result.error } : {}),
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message, stack: e.stack });
+    }
+});
+
+// ── Scraper: TikTok Video Comments ───────────────────────────────────────────
+
+async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promise<{
+    video: TikTokVideo | null;
+    comments: TikTokComment[];
+    durationMs: number;
+    error?: string;
+}> {
+    const start = Date.now();
+    const comments = new Map<string, TikTokComment>();
+    let video: TikTokVideo | null = null;
+    let browser;
+
+    try {
+        browser = await chromium.launch({
+            headless: false,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-blink-features=AutomationControlled',
+            ],
+        });
+
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+            locale: 'en-US',
+            timezoneId: 'America/New_York',
+            extraHTTPHeaders: {
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
+        });
+
+        const page = await context.newPage();
+        const apiUrls: string[] = [];
+
+        const cdp = await context.newCDPSession(page);
+        await cdp.send('Network.enable');
+
         const requestUrls = new Map<string, string>();
 
         cdp.on('Network.responseReceived', (event: any) => {
@@ -453,7 +1082,6 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
             }
         });
 
-        // Read body on loadingFinished — body is guaranteed to be available
         cdp.on('Network.loadingFinished', async (event: any) => {
             const url = requestUrls.get(event.requestId);
             if (!url) return;
@@ -475,21 +1103,16 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
                             comments.set(parsed.id, parsed);
                         }
                     }
-                    if (commentList.length === 0) {
-                        console.log(`[tiktok] 0 comments in ${url.includes('reply') ? 'reply' : 'list'} response — total: ${json.total}, has_more: ${json.has_more}, status: ${json.status_code}, cursor: ${json.cursor}`);
-                    } else {
-                        console.log(`[tiktok] parsed ${commentList.length} comments (total: ${comments.size})`);
-                    }
                 }
             } catch (e: any) {
-                console.log(`[tiktok] CDP body read: ${e.message?.slice(0, 100)}`);
+                // Ignore CDP body read failures
             }
         });
 
         console.log(`[tiktok] navigating to ${videoUrl}`);
         await page.goto(videoUrl, { waitUntil: 'networkidle', timeout: 30000 });
 
-        // Extract video metadata AND comments from rehydration data (SSR data)
+        // Extract video metadata AND comments from SSR rehydration data
         try {
             const rehydrationData = await page.evaluate(() => {
                 const script = document.querySelector('#__UNIVERSAL_DATA_FOR_REHYDRATION__');
@@ -501,20 +1124,12 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
 
             if (rehydrationData) {
                 const scope = rehydrationData['__DEFAULT_SCOPE__'] || {};
-                
-                // Log available keys for debugging
-                console.log(`[tiktok] rehydration keys: ${Object.keys(scope).join(', ')}`);
-                
-                // Extract video metadata
                 const detail = scope['webapp.video-detail'] || scope['webapp.video_detail'] || {};
                 const itemStruct = detail.itemInfo?.itemStruct || detail.itemStruct;
                 if (itemStruct) {
                     video = parseVideoMeta(itemStruct);
-                    console.log(`[tiktok] video: ${video.caption.slice(0, 60)}... (${video.comments} comments)`);
                 }
 
-                // Extract comments from rehydration data
-                // TikTok includes initial comments in several possible locations
                 const commentScope = scope['webapp.comment-detail'] || scope['webapp.comment_detail'] || {};
                 const possibleCommentSources = [
                     detail.commentInfo?.comments,
@@ -525,7 +1140,6 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
 
                 for (const source of possibleCommentSources) {
                     if (Array.isArray(source) && source.length > 0) {
-                        console.log(`[tiktok] found ${source.length} comments in rehydration data`);
                         for (const c of source) {
                             const parsed = parseComment(c);
                             if (parsed.id && parsed.text) {
@@ -535,368 +1149,56 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
                         break;
                     }
                 }
-
-                // Also look in any key that contains "comment"
-                for (const [key, value] of Object.entries(scope)) {
-                    if (key.toLowerCase().includes('comment') && typeof value === 'object' && value !== null) {
-                        const val = value as Record<string, any>;
-                        console.log(`[tiktok] comment scope key "${key}" has keys: ${Object.keys(val).join(', ')}`);
-                        // Check if it has a comments array
-                        for (const subKey of Object.keys(val)) {
-                            const subVal = val[subKey];
-                            if (Array.isArray(subVal) && subVal.length > 0 && subVal[0]?.text) {
-                                console.log(`[tiktok] found ${subVal.length} comments in ${key}.${subKey}`);
-                                for (const c of subVal) {
-                                    const parsed = parseComment(c);
-                                    if (parsed.id && parsed.text) {
-                                        comments.set(parsed.id, parsed);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                console.log(`[tiktok] comments from rehydration: ${comments.size}`);
             }
         } catch (e) {
             console.log(`[tiktok] rehydration parse failed: ${e}`);
         }
 
-        // Wait for comment section to load and comments to appear
         await page.waitForTimeout(3000);
 
-        // Try to click the comments section to ensure it's open
         try {
             const commentButton = page.locator('[data-e2e="comment-icon"]').first();
             if (await commentButton.isVisible({ timeout: 3000 })) {
                 await commentButton.click();
                 await page.waitForTimeout(2000);
             }
-        } catch {
-            // Comment section might already be visible
-        }
+        } catch {}
 
-        // Find the scrollable comment container and paginate
         const deadline = Date.now() + timeoutMs;
-        let previousCount = 0;
         let staleCycles = 0;
         const MAX_STALE_CYCLES = 5;
 
         while (Date.now() < deadline && staleCycles < MAX_STALE_CYCLES) {
             const prevSize = comments.size;
 
-            // Scroll inside the actual comment container
             await page.evaluate(() => {
-                // Strategy 1: Find the scrollable container by testing scroll properties
-                // TikTok's comment section is a div with overflow-y: auto/scroll
                 const candidates = [
-                    // Known TikTok comment container selectors
                     ...document.querySelectorAll('[class*="DivCommentListContainer"]'),
                     ...document.querySelectorAll('[class*="CommentListContainer"]'),
                     ...document.querySelectorAll('[data-e2e="comment-list"]'),
                     ...document.querySelectorAll('[class*="comment-list"]'),
                 ];
-
-                // If known selectors found, scroll the first scrollable one
+                let scrolled = false;
                 for (const el of candidates) {
-                    if (el.scrollHeight > el.clientHeight) {
-                        el.scrollTop = el.scrollHeight;
-                        return;
+                    if (el.scrollHeight > el.clientHeight && el.clientHeight > 0) {
+                        el.scrollTop += 800;
+                        scrolled = true;
+                        break;
                     }
                 }
-
-                // Strategy 2: Walk up from a comment element to find its scrollable parent
-                const anyComment = document.querySelector('[data-e2e="comment-level-1"]') ||
-                    document.querySelector('[class*="DivCommentItemContainer"]') ||
-                    document.querySelector('[class*="CommentItem"]');
-                if (anyComment) {
-                    let parent = anyComment.parentElement;
-                    while (parent && parent !== document.body) {
-                        const style = window.getComputedStyle(parent);
-                        const overflowY = style.overflowY;
-                        if ((overflowY === 'auto' || overflowY === 'scroll') && parent.scrollHeight > parent.clientHeight + 50) {
-                            parent.scrollTop = parent.scrollHeight;
-                            return;
-                        }
-                        parent = parent.parentElement;
-                    }
+                if (!scrolled) {
+                    window.scrollBy(0, 600);
                 }
-
-                // Strategy 3: Find any deeply scrollable div that's likely the comment panel
-                const allDivs = document.querySelectorAll('div');
-                let bestDiv: Element | null = null;
-                let bestOverflow = 0;
-                for (const div of allDivs) {
-                    const overflow = div.scrollHeight - div.clientHeight;
-                    if (overflow > 200 && overflow > bestOverflow) {
-                        const style = window.getComputedStyle(div);
-                        if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
-                            // Check it's not the main page scroller or video container
-                            const rect = div.getBoundingClientRect();
-                            if (rect.width < window.innerWidth * 0.8) { // Side panel, not full width
-                                bestDiv = div;
-                                bestOverflow = overflow;
-                            }
-                        }
-                    }
-                }
-                if (bestDiv) {
-                    bestDiv.scrollTop = bestDiv.scrollHeight;
-                    return;
-                }
-
-                // Last resort: scroll the page itself
-                window.scrollBy(0, 1500);
             });
 
-            // Wait for potential API response — use a short wait then check
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(1500);
 
-            // Check if new comments arrived
-            if (comments.size > prevSize) {
-                staleCycles = 0;
-                console.log(`[tiktok] scroll → ${comments.size} comments (+${comments.size - prevSize})`);
-            } else {
+            if (comments.size === prevSize) {
                 staleCycles++;
-                // On stale, wait a bit longer before next attempt
-                await page.waitForTimeout(1000);
-            }
-
-            previousCount = comments.size;
-        }
-
-        const topLevelCount = comments.size;
-        console.log(`[tiktok] scroll done — ${topLevelCount} top-level comments, ${staleCycles} stale cycles`);
-
-        // ── Phase 2: Expand reply threads ──────────────────────────────────
-        // Click "View N replies" buttons to trigger /api/comment/list/reply/
-        // The CDP handler already captures reply responses
-        if (Date.now() < deadline) {
-            console.log(`[tiktok] expanding reply threads...`);
-            let replyRound = 0;
-            const MAX_REPLY_ROUNDS = 20; // safety cap
-
-            while (Date.now() < deadline && replyRound < MAX_REPLY_ROUNDS) {
-                replyRound++;
-                const prevSize = comments.size;
-
-                // Click all visible "View/Show replies" buttons
-                const clicked = await page.evaluate(() => {
-                    let clickCount = 0;
-                    // TikTok uses various selectors for reply expand buttons
-                    const selectors = [
-                        '[data-e2e="view-more-replies-1"]',
-                        '[class*="ReplyActionText"]',
-                        '[class*="view-more-reply"]',
-                        'p[class*="ReplyButton"]',
-                        'span[class*="ReplyButton"]',
-                    ];
-
-                    for (const selector of selectors) {
-                        const buttons = document.querySelectorAll(selector);
-                        buttons.forEach((btn) => {
-                            const el = btn as HTMLElement;
-                            // Only click if visible and contains reply-related text
-                            if (el.offsetParent !== null) {
-                                el.click();
-                                clickCount++;
-                            }
-                        });
-                    }
-
-                    // Also look for text-based reply buttons by content
-                    const allSpans = document.querySelectorAll('p, span');
-                    for (const span of allSpans) {
-                        const text = span.textContent?.toLowerCase() || '';
-                        if ((text.includes('view') || text.includes('show')) &&
-                            text.includes('repl') &&
-                            (span as HTMLElement).offsetParent !== null) {
-                            (span as HTMLElement).click();
-                            clickCount++;
-                        }
-                    }
-
-                    return clickCount;
-                });
-
-                if (clicked === 0 && comments.size === prevSize) {
-                    // No buttons found and no new comments — we're done
-                    console.log(`[tiktok] no more reply buttons found`);
-                    break;
-                }
-
-                // Wait for reply API responses
-                await page.waitForTimeout(2500);
-
-                // Scroll the comment container to reveal more reply buttons
-                await page.evaluate(() => {
-                    const anyComment = document.querySelector('[data-e2e="comment-level-1"]') ||
-                        document.querySelector('[class*="DivCommentItemContainer"]');
-                    if (anyComment) {
-                        let parent = anyComment.parentElement;
-                        while (parent && parent !== document.body) {
-                            const style = window.getComputedStyle(parent);
-                            if ((style.overflowY === 'auto' || style.overflowY === 'scroll') &&
-                                parent.scrollHeight > parent.clientHeight + 50) {
-                                parent.scrollTop = parent.scrollHeight;
-                                return;
-                            }
-                            parent = parent.parentElement;
-                        }
-                    }
-                    window.scrollBy(0, 800);
-                });
-
-                await page.waitForTimeout(1000);
-
-                const newReplies = comments.size - prevSize;
-                if (newReplies > 0) {
-                    console.log(`[tiktok] reply round ${replyRound}: +${newReplies} replies (total: ${comments.size})`);
-                }
-            }
-
-            // DOM-based reply extraction — replies may render even if API response was empty
-            try {
-                const domReplies = await page.evaluate(() => {
-                    const results: any[] = [];
-                    // TikTok reply comments use data-e2e="comment-level-2"
-                    const replyEls = document.querySelectorAll('[data-e2e="comment-level-2"]');
-                    replyEls.forEach((el, i) => {
-                        const textEl = el.querySelector('[data-e2e="comment-level-2"] span') ||
-                            el.querySelector('[class*="CommentText"]') ||
-                            el.querySelector('p') ||
-                            el.querySelector('span:not([class*="name"]):not([class*="time"])');
-                        const authorEl = el.querySelector('[data-e2e="comment-username-2"]') ||
-                            el.querySelector('[class*="UserName"]') ||
-                            el.querySelector('a[href*="/@"]');
-                        const text = textEl?.textContent?.trim() || '';
-                        const author = authorEl?.textContent?.trim().replace('@', '') || '';
-                        if (text) {
-                            results.push({
-                                id: `reply-dom-${i}`,
-                                text,
-                                author,
-                                authorNickname: author,
-                                authorAvatar: '',
-                                likes: 0,
-                                replyCount: 0,
-                                createTime: '',
-                                isAuthorLiked: false,
-                            });
-                        }
-                    });
-                    return results;
-                });
-
-                if (domReplies.length > 0) {
-                    let newFromDom = 0;
-                    for (const r of domReplies) {
-                        // Deduplicate by text content (DOM replies don't have real IDs)
-                        const isDuplicate = [...comments.values()].some(c => c.text === r.text && c.author === r.author);
-                        if (!isDuplicate) {
-                            comments.set(r.id, r);
-                            newFromDom++;
-                        }
-                    }
-                    console.log(`[tiktok] DOM reply extraction: ${domReplies.length} found, ${newFromDom} new (total: ${comments.size})`);
-                }
-            } catch (e: any) {
-                console.log(`[tiktok] DOM reply extraction failed: ${e.message?.slice(0, 80)}`);
-            }
-
-            console.log(`[tiktok] replies done — ${comments.size - topLevelCount} replies added (${comments.size} total)`);
-        }
-
-        // Log all API URLs seen for debugging
-        const uniqueApiUrls = [...new Set(apiUrls)];
-        console.log(`[tiktok] API URLs seen: ${uniqueApiUrls.join(', ')}`);
-
-        // DOM fallback: extract comments from rendered page if API interception got nothing
-        if (comments.size === 0) {
-            console.log('[tiktok] API interception found no comments, trying DOM extraction...');
-            try {
-                const domComments = await page.evaluate(() => {
-                    const results: any[] = [];
-
-                    // Try multiple selectors for comment containers
-                    const selectors = [
-                        '[data-e2e="comment-level-1"]',
-                        '[class*="DivCommentItemContainer"]',
-                        '[class*="CommentItemContainer"]',
-                        '[class*="comment-item"]',
-                        '[class*="CommentListContainer"] > div',
-                    ];
-
-                    for (const selector of selectors) {
-                        const elements = document.querySelectorAll(selector);
-                        if (elements.length > 0) {
-                            elements.forEach((el, i) => {
-                                // Try to get comment text from various possible child selectors
-                                const textEl = el.querySelector('[data-e2e="comment-level-1"] span') ||
-                                    el.querySelector('[class*="CommentText"]') ||
-                                    el.querySelector('[class*="comment-text"]') ||
-                                    el.querySelector('p') ||
-                                    el.querySelector('span:not([class*="name"]):not([class*="time"])');
-
-                                const authorEl = el.querySelector('[data-e2e="comment-username-1"]') ||
-                                    el.querySelector('[class*="UserName"]') ||
-                                    el.querySelector('[class*="user-name"]') ||
-                                    el.querySelector('a[href*="/@"]');
-
-                                const text = textEl?.textContent?.trim() || '';
-                                const author = authorEl?.textContent?.trim() || '';
-
-                                if (text) {
-                                    results.push({
-                                        id: `dom-${i}`,
-                                        text,
-                                        author,
-                                        source: 'dom',
-                                        selector,
-                                    });
-                                }
-                            });
-                            if (results.length > 0) break; // stop if we found comments
-                        }
-                    }
-
-                    // If no structured comments found, try getting all text from the comment section
-                    if (results.length === 0) {
-                        const commentSection = document.querySelector('[class*="DivCommentListContainer"]') ||
-                            document.querySelector('[data-e2e="comment-list"]') ||
-                            document.querySelector('[class*="CommentList"]');
-                        if (commentSection) {
-                            results.push({
-                                id: 'dom-raw',
-                                text: commentSection.textContent?.slice(0, 5000) || '',
-                                author: '',
-                                source: 'dom-raw-section',
-                                selector: 'comment-section',
-                            });
-                        }
-                    }
-
-                    return results;
-                });
-
-                for (const dc of domComments) {
-                    comments.set(dc.id, {
-                        id: dc.id,
-                        text: dc.text,
-                        author: dc.author,
-                        authorNickname: '',
-                        authorAvatar: '',
-                        likes: 0,
-                        replyCount: 0,
-                        createTime: '',
-                        isAuthorLiked: false,
-                    });
-                }
-
-                console.log(`[tiktok] DOM extraction found ${domComments.length} comments`);
-            } catch (e: any) {
-                console.log(`[tiktok] DOM extraction failed: ${e.message}`);
+                await page.evaluate(() => window.scrollBy(0, 1000));
+                await page.waitForTimeout(2000);
+            } else {
+                staleCycles = 0;
             }
         }
 
@@ -944,7 +1246,7 @@ app.get('/tiktok/comments', async (req, res) => {
     }
 });
 
-// ── Cheerio crawl (unchanged) ──────────────────────────────────────────────────
+// ── Cheerio crawl ─────────────────────────────────────────────────────────────
 
 async function runCrawl(targetUrl: string, label = 'smoke'): Promise<any[]> {
     const results: any[] = [];
@@ -966,17 +1268,6 @@ async function runCrawl(targetUrl: string, label = 'smoke'): Promise<any[]> {
 app.get('/crawl', async (req, res) => {
     const url = (req.query.url as string) || '';
     const c = (req.query.case as string) || '';
-    if (c === 'zapier') {
-        const limit = Math.min(parseInt((req.query.limit as string) || '100', 10), 100);
-        const pages = Math.min(parseInt((req.query.pages as string) || '2', 10), 101);
-        try {
-            const start = Date.now();
-            const apps = await fetchZapierApps(limit, pages);
-            return res.json({ target: 'https://zapier.com/api/v4/apps', count: apps.length, durationMs: Date.now() - start, apps });
-        } catch (e: any) {
-            return res.status(500).json({ error: e.message });
-        }
-    }
     let target = url;
     if (!target) {
         if (c === 'books') target = 'https://books.toscrape.com';
