@@ -1283,12 +1283,24 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
             }
         } catch {}
 
+        // Locate comment list container and hover to focus
+        try {
+            const commentBox = page.locator('[class*="CommentListContainer"], [class*="DivCommentListContainer"], [data-e2e="comment-list"], [data-e2e="search-comment-container"]').first();
+            if (await commentBox.isVisible({ timeout: 2000 })) {
+                await commentBox.hover().catch(() => {});
+            }
+        } catch {}
+
         const deadline = Date.now() + timeoutMs;
         let staleCycles = 0;
-        const MAX_STALE_CYCLES = 5;
+        const MAX_STALE_CYCLES = 12;
 
         while (Date.now() < deadline && staleCycles < MAX_STALE_CYCLES) {
             const prevSize = comments.size;
+
+            // 1. Dispatch wheel events & DOM scrolls
+            await page.mouse.wheel(0, 1000).catch(() => {});
+            await page.keyboard.press('PageDown').catch(() => {});
 
             await page.evaluate(() => {
                 const candidates = [
@@ -1297,24 +1309,29 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
                     ...document.querySelectorAll('[data-e2e="comment-list"]'),
                     ...document.querySelectorAll('[class*="comment-list"]'),
                 ];
-                let scrolled = false;
                 for (const el of candidates) {
                     if (el.scrollHeight > el.clientHeight && el.clientHeight > 0) {
-                        el.scrollTop += 800;
-                        scrolled = true;
-                        break;
+                        el.scrollTop += 1200;
                     }
                 }
-                if (!scrolled) {
-                    window.scrollBy(0, 600);
-                }
+                window.scrollBy(0, 800);
             });
 
-            await page.waitForTimeout(1500);
+            // 2. Expand replies if visible
+            try {
+                const replyButtons = await page.$$('[data-e2e="view-more-replies"], [data-e2e="comment-reply-1st"], [class*="ReplyActionText"]');
+                for (const btn of replyButtons.slice(0, 3)) {
+                    await btn.click().catch(() => {});
+                    await page.waitForTimeout(300);
+                }
+            } catch {}
+
+            await page.waitForTimeout(1800);
 
             if (comments.size === prevSize) {
                 staleCycles++;
-                await page.evaluate(() => window.scrollBy(0, 1000));
+                await page.mouse.wheel(0, 1500).catch(() => {});
+                await page.keyboard.press('PageDown').catch(() => {});
                 await page.waitForTimeout(2000);
             } else {
                 staleCycles = 0;
@@ -1347,7 +1364,7 @@ app.get('/tiktok/comments', async (req, res) => {
         return res.status(400).json({ error: 'Missing or invalid ?url= parameter. Provide a TikTok video URL.' });
     }
 
-    const timeout = Math.min(parseInt((req.query.timeout as string) || '60000', 10), 120000);
+    const timeout = Math.min(parseInt((req.query.timeout as string) || '60000', 10), 300000);
 
     try {
         console.log(`[tiktok] request: ${url}`);
