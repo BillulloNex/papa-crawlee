@@ -244,7 +244,7 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
         console.log(`[tiktok] navigating to ${videoUrl}`);
         await page.goto(videoUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-        // Extract video metadata from rehydration data
+        // Extract video metadata AND comments from rehydration data (SSR data)
         try {
             const rehydrationData = await page.evaluate(() => {
                 const script = document.querySelector('#__UNIVERSAL_DATA_FOR_REHYDRATION__');
@@ -256,12 +256,63 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
 
             if (rehydrationData) {
                 const scope = rehydrationData['__DEFAULT_SCOPE__'] || {};
+                
+                // Log available keys for debugging
+                console.log(`[tiktok] rehydration keys: ${Object.keys(scope).join(', ')}`);
+                
+                // Extract video metadata
                 const detail = scope['webapp.video-detail'] || scope['webapp.video_detail'] || {};
                 const itemStruct = detail.itemInfo?.itemStruct || detail.itemStruct;
                 if (itemStruct) {
                     video = parseVideoMeta(itemStruct);
                     console.log(`[tiktok] video: ${video.caption.slice(0, 60)}... (${video.comments} comments)`);
                 }
+
+                // Extract comments from rehydration data
+                // TikTok includes initial comments in several possible locations
+                const commentScope = scope['webapp.comment-detail'] || scope['webapp.comment_detail'] || {};
+                const possibleCommentSources = [
+                    detail.commentInfo?.comments,
+                    detail.comments,
+                    commentScope.comments,
+                    commentScope.commentList,
+                ];
+
+                for (const source of possibleCommentSources) {
+                    if (Array.isArray(source) && source.length > 0) {
+                        console.log(`[tiktok] found ${source.length} comments in rehydration data`);
+                        for (const c of source) {
+                            const parsed = parseComment(c);
+                            if (parsed.id && parsed.text) {
+                                comments.set(parsed.id, parsed);
+                            }
+                        }
+                        break;
+                    }
+                }
+
+                // Also look in any key that contains "comment"
+                for (const [key, value] of Object.entries(scope)) {
+                    if (key.toLowerCase().includes('comment') && typeof value === 'object' && value !== null) {
+                        const val = value as Record<string, any>;
+                        console.log(`[tiktok] comment scope key "${key}" has keys: ${Object.keys(val).join(', ')}`);
+                        // Check if it has a comments array
+                        for (const subKey of Object.keys(val)) {
+                            const subVal = val[subKey];
+                            if (Array.isArray(subVal) && subVal.length > 0 && subVal[0]?.text) {
+                                console.log(`[tiktok] found ${subVal.length} comments in ${key}.${subKey}`);
+                                for (const c of subVal) {
+                                    const parsed = parseComment(c);
+                                    if (parsed.id && parsed.text) {
+                                        comments.set(parsed.id, parsed);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                console.log(`[tiktok] comments from rehydration: ${comments.size}`);
             }
         } catch (e) {
             console.log(`[tiktok] rehydration parse failed: ${e}`);
