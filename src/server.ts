@@ -923,6 +923,16 @@ async function scrapeTikTokUserPosts(
 
         const page = await context.newPage();
 
+        // Step 3: Block Media to speed up page loads significantly
+        await page.route('**/*', (route) => {
+            const type = route.request().resourceType();
+            if (['image', 'media', 'font', 'stylesheet'].includes(type)) {
+                route.abort().catch(() => {});
+            } else {
+                route.continue().catch(() => {});
+            }
+        });
+
         // Listen for both /api/post/item_list (creator videos) and /api/repost/item_list (reposts/mentions)
         page.on('response', async (response) => {
             const url = response.url();
@@ -1035,7 +1045,7 @@ async function scrapeTikTokUserPosts(
                 window.scrollBy({ top: 1800, behavior: 'smooth' });
             });
 
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(1000);
 
             // Supplementary DOM extraction for rendered video tiles
             try {
@@ -1108,7 +1118,7 @@ async function scrapeTikTokUserPosts(
                 staleCycles++;
                 // Nudge scroll to bottom
                 await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-                await page.waitForTimeout(2500);
+                await page.waitForTimeout(1200);
             } else {
                 staleCycles = 0;
             }
@@ -1211,6 +1221,16 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
 
         const page = await context.newPage();
 
+        // Step 3: Block Media to speed up page loads significantly
+        await page.route('**/*', (route) => {
+            const type = route.request().resourceType();
+            if (['image', 'media', 'font', 'stylesheet'].includes(type)) {
+                route.abort().catch(() => {});
+            } else {
+                route.continue().catch(() => {});
+            }
+        });
+
         page.on('response', async (response) => {
             const url = response.url();
             if (url.includes('comment') && (url.includes('list') || url.includes('reply'))) {
@@ -1273,7 +1293,7 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
             console.log(`[tiktok] rehydration parse failed: ${e}`);
         }
 
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(1000);
 
         try {
             const commentButton = page.locator('[data-e2e="comment-icon"]').first();
@@ -1326,13 +1346,13 @@ async function scrapeTikTokComments(videoUrl: string, timeoutMs = 60000): Promis
                 }
             } catch {}
 
-            await page.waitForTimeout(1800);
+            await page.waitForTimeout(800);
 
             if (comments.size === prevSize) {
                 staleCycles++;
                 await page.mouse.wheel(0, 1500).catch(() => {});
                 await page.keyboard.press('PageDown').catch(() => {});
-                await page.waitForTimeout(2000);
+                await page.waitForTimeout(1000);
             } else {
                 staleCycles = 0;
             }
