@@ -12,6 +12,7 @@ WORKDIR /app
 COPY --from=builder /app/dist ./dist
 COPY package*.json ./
 RUN npm --quiet set progress=false && npm install --omit=dev && echo "Installed" && node --version
+RUN npx playwright install chromium
 COPY . ./
 RUN chown -R myuser:myuser /app
 USER myuser
