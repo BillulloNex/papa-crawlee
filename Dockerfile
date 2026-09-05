@@ -1,4 +1,4 @@
-FROM apify/actor-node-playwright-chrome:22 AS builder
+FROM apify/actor-node-playwright-chrome:24 AS builder
 USER root
 WORKDIR /app
 COPY package*.json ./
@@ -6,7 +6,7 @@ RUN npm install --include=dev --audit=false
 COPY . ./
 RUN npm run build
 
-FROM apify/actor-node-playwright-chrome:22
+FROM apify/actor-node-playwright-chrome:24
 USER root
 WORKDIR /app
 COPY --from=builder /app/dist ./dist
