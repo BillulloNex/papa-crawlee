@@ -145,7 +145,7 @@ instagramRouter.get('/comments', async (req, res): Promise<void> => {
 // Followers endpoint
 instagramRouter.get('/followers', async (req, res): Promise<void> => {
     const handle = (req.query.handle as string)?.trim();
-    const limit = Math.min(parseInt(req.query.limit as string) || 100, 1000);
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 5000);
 
     if (!handle) {
         res.status(400).json({ error: 'Missing required query param: handle' });

@@ -57,11 +57,11 @@ export async function scrapeFollowers(
         let maxId: string | null = null;
         const batchSize = 50;
         const maxPages = Math.ceil(limit / batchSize);
+        let consecutiveErrors = 0;
+        const MAX_RETRIES = 3;
 
         for (let pageNum = 0; pageNum < maxPages; pageNum++) {
             if (followers.size >= limit) break;
-
-            console.log(`[ig-followers] Fetching page ${pageNum + 1}/${maxPages} (${followers.size} so far)...`);
 
             const apiUrl = maxId
                 ? `https://www.instagram.com/api/v1/friendships/${userId}/followers/?count=${batchSize}&max_id=${maxId}`
@@ -80,25 +80,40 @@ export async function scrapeFollowers(
                         credentials: 'include',
                     });
                     if (!resp.ok) {
-                        return { error: `HTTP ${resp.status}`, users: [], next_max_id: null };
+                        return { error: `HTTP ${resp.status}`, status: resp.status, users: [], next_max_id: null };
                     }
                     const data = await resp.json();
                     return {
                         users: data.users || [],
                         next_max_id: data.next_max_id || null,
                         big_list: data.big_list ?? false,
-                        page_size: data.page_size ?? 0,
-                        status: data.status,
+                        status: resp.status,
                     };
                 } catch (err: any) {
-                    return { error: err.message, users: [], next_max_id: null };
+                    return { error: err.message, status: 0, users: [], next_max_id: null };
                 }
             }, apiUrl);
 
+            // Handle rate limiting with exponential backoff
             if (result.error) {
+                const statusCode = result.status || 0;
+                if (statusCode === 429 || statusCode === 403) {
+                    consecutiveErrors++;
+                    if (consecutiveErrors > MAX_RETRIES) {
+                        console.log(`[ig-followers] Rate limited ${MAX_RETRIES} times — stopping (got ${followers.size} so far)`);
+                        break;
+                    }
+                    const backoff = Math.min(15000 * Math.pow(2, consecutiveErrors - 1), 120000); // 15s, 30s, 60s
+                    console.log(`[ig-followers] Rate limited (${statusCode}) — backing off ${Math.round(backoff / 1000)}s (retry ${consecutiveErrors}/${MAX_RETRIES})`);
+                    await page.waitForTimeout(backoff);
+                    pageNum--; // Retry this page
+                    continue;
+                }
                 console.log(`[ig-followers] API error: ${result.error}`);
                 break;
             }
+
+            consecutiveErrors = 0; // Reset on success
 
             if (result.users.length === 0) {
                 console.log(`[ig-followers] No more followers returned`);
@@ -119,17 +134,26 @@ export async function scrapeFollowers(
                 });
             }
 
-            console.log(`[ig-followers] Page ${pageNum + 1}: got ${result.users.length} users (total: ${followers.size})`);
+            // Progress logging
+            if (pageNum % 5 === 0 || followers.size >= limit) {
+                console.log(`[ig-followers] Page ${pageNum + 1}: ${followers.size}/${limit} followers captured`);
+            }
 
             // Check for pagination
             maxId = result.next_max_id;
             if (!maxId) {
-                console.log(`[ig-followers] No more pages`);
+                console.log(`[ig-followers] No more pages (end of list)`);
                 break;
             }
 
-            // Rate limit delay between pages
-            await page.waitForTimeout(2000 + Math.random() * 2000);
+            // Smart pacing: start fast, slow down as we go deeper
+            // Pages 1-5: 2-4s, Pages 5-20: 3-6s, Pages 20+: 5-10s
+            let baseDelay: number;
+            if (pageNum < 5) baseDelay = 2000;
+            else if (pageNum < 20) baseDelay = 3000;
+            else baseDelay = 5000;
+            const jitter = Math.random() * baseDelay;
+            await page.waitForTimeout(baseDelay + jitter);
         }
 
         console.log(`[ig-followers] Captured ${followers.size} followers for @${handle}`);
