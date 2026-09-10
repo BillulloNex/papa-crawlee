@@ -4,6 +4,7 @@ import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import fs from 'node:fs';
 import path from 'node:path';
+import { instagramRouter } from './instagram/routes.js';
 
 // Register stealth plugin — patches navigator.webdriver, chrome.runtime,
 // plugin enumeration, languages, WebGL vendor, and 10+ other automation signals
@@ -1959,40 +1960,92 @@ async function scrapeTikTokFollowers(
         // Auto-scroll the followers modal/page to load more
         const deadline = Date.now() + timeoutMs;
         let staleCycles = 0;
-        const MAX_STALE_CYCLES = 8;
+        const MAX_STALE_CYCLES = 12;
 
         while (Date.now() < deadline && followersMap.size < maxFollowers && staleCycles < MAX_STALE_CYCLES) {
             const prevSize = followersMap.size;
 
-            // Scroll the modal container or the page
-            await page.evaluate(() => {
-                // Try scrolling modal containers
-                const modalCandidates = [
-                    ...document.querySelectorAll('[class*="DivUserListContainer"]'),
-                    ...document.querySelectorAll('[class*="UserListContainer"]'),
-                    ...document.querySelectorAll('[class*="follower"]'),
-                    ...document.querySelectorAll('[role="dialog"] [class*="scroll"]'),
-                    ...document.querySelectorAll('[role="dialog"] > div > div'),
-                ];
-                let scrolled = false;
-                for (const el of modalCandidates) {
-                    if (el instanceof HTMLElement && el.scrollHeight > el.clientHeight && el.clientHeight > 100) {
-                        el.scrollTop += 1200;
-                        scrolled = true;
-                        break;
+            // Scroll the modal container — find ANY scrollable element in the overlay
+            const scrollInfo = await page.evaluate(() => {
+                // Strategy: find all elements, sort by depth, and scroll the deepest
+                // scrollable container inside any overlay/dialog/modal
+                const allEls = document.querySelectorAll('*');
+                let bestEl: HTMLElement | null = null;
+                let bestDepth = -1;
+                let info = { found: false, tag: '', className: '', scrollH: 0, clientH: 0 };
+
+                for (const raw of allEls) {
+                    const el = raw as HTMLElement;
+                    if (!el.scrollHeight || !el.clientHeight) continue;
+                    if (el.scrollHeight <= el.clientHeight) continue;
+                    if (el.clientHeight < 200) continue; // too small to be the follower list
+
+                    // Check if this element is inside an overlay
+                    const inOverlay = !!el.closest('[role="dialog"], [role="presentation"], [class*="modal"], [class*="Modal"], [class*="overlay"], [class*="Overlay"], [class*="DivContainer"], [data-e2e*="user-list"], [data-e2e*="follower"]');
+                    const isBody = el.tagName === 'BODY' || el.tagName === 'HTML';
+
+                    if (inOverlay && !isBody) {
+                        // Compute depth
+                        let depth = 0;
+                        let p = el.parentElement;
+                        while (p) { depth++; p = p.parentElement; }
+
+                        if (depth > bestDepth) {
+                            bestDepth = depth;
+                            bestEl = el;
+                            info = { found: true, tag: el.tagName, className: el.className.substring(0, 80), scrollH: el.scrollHeight, clientH: el.clientHeight };
+                        }
                     }
                 }
-                if (!scrolled) {
-                    window.scrollBy(0, 1200);
+
+                if (bestEl) {
+                    bestEl.scrollTop = bestEl.scrollHeight;
+                    return info;
                 }
+
+                // Fallback: scroll the deepest scrollable element on the page
+                for (const raw of allEls) {
+                    const el = raw as HTMLElement;
+                    const isBody = el.tagName === 'BODY' || el.tagName === 'HTML';
+                    if (!isBody && el.scrollHeight > el.clientHeight && el.clientHeight > 300) {
+                        let depth = 0;
+                        let p = el.parentElement;
+                        while (p) { depth++; p = p.parentElement; }
+                        if (depth > bestDepth) {
+                            bestDepth = depth;
+                            bestEl = el;
+                            info = { found: true, tag: el.tagName, className: el.className.substring(0, 80), scrollH: el.scrollHeight, clientH: el.clientHeight };
+                        }
+                    }
+                }
+
+                if (bestEl) {
+                    (bestEl as HTMLElement).scrollTop = (bestEl as HTMLElement).scrollHeight;
+                    return info;
+                }
+
+                // Last resort: page scroll
+                window.scrollBy(0, 3000);
+                return { found: false, tag: 'window', className: '', scrollH: 0, clientH: 0 };
             });
 
-            // Also try keyboard scrolling and mouse wheel
-            await page.mouse.wheel(0, 1000).catch(() => {});
-            await page.keyboard.press('PageDown').catch(() => {});
+            if (staleCycles === 0 && scrollInfo.found) {
+                console.log(`[tiktok-followers] scrolling: <${scrollInfo.tag}> class="${scrollInfo.className}" (${scrollInfo.scrollH}x${scrollInfo.clientH})`);
+            }
 
-            // Humanized delay between scrolls (2-5 seconds)
-            const delay = 2000 + Math.random() * 3000;
+            // Focus the modal and send keyboard events for scrolling
+            try {
+                const dialog = page.locator('[role="dialog"], [role="presentation"], [class*="modal" i], [class*="overlay" i]').first();
+                if (await dialog.isVisible({ timeout: 500 }).catch(() => false)) {
+                    await dialog.click({ position: { x: 200, y: 400 }, force: true }).catch(() => {});
+                }
+            } catch {}
+            await page.keyboard.press('End').catch(() => {});
+            await page.keyboard.press('PageDown').catch(() => {});
+            await page.mouse.wheel(0, 2000).catch(() => {});
+
+            // Humanized delay between scrolls (2-4 seconds)
+            const delay = 2000 + Math.random() * 2000;
             await page.waitForTimeout(delay);
 
             // Supplementary: try to extract followers from DOM if API interception missed them
