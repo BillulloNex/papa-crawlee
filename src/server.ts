@@ -1848,13 +1848,36 @@ async function scrapeTikTokFollowers(
             }
         });
 
+        // Track captured API request details for cursor replay
+        let capturedApiUrl = '';
+        let capturedApiHeaders: Record<string, string> = {};
+        let lastCursor = '0';
+        let hasMore = true;
+
         // Intercept follower list API responses
         page.on('response', async (response) => {
             const url = response.url();
             // TikTok's follower list endpoint — /api/user/list with scene=67 (followers) or scene=21 (following)
             if (url.includes('tiktok.com') && (url.includes('/api/user/list') || url.includes('follower_list') || url.includes('user/list'))) {
                 try {
+                    // Capture request details for cursor replay
+                    const request = response.request();
+                    if (!capturedApiUrl) {
+                        capturedApiUrl = url;
+                        const rawHeaders = request.headers();
+                        capturedApiHeaders = { ...rawHeaders };
+                        console.log(`[tiktok-followers] captured API URL: ${url.substring(0, 120)}...`);
+                    }
+
                     const json = await response.json();
+
+                    // Extract pagination info
+                    if (json.minCursor !== undefined) lastCursor = String(json.minCursor);
+                    else if (json.cursor !== undefined) lastCursor = String(json.cursor);
+                    else if (json.offset !== undefined) lastCursor = String(json.offset);
+                    if (json.hasMore !== undefined) hasMore = !!json.hasMore;
+                    else if (json.has_more !== undefined) hasMore = !!json.has_more;
+
                     const userList = json.userList || json.users || json.data?.userList || json.data?.users || [];
                     if (Array.isArray(userList)) {
                         for (const item of userList) {
@@ -1864,7 +1887,7 @@ async function scrapeTikTokFollowers(
                                 followersMap.set(parsed.id, parsed);
                             }
                         }
-                        console.log(`[tiktok-followers] captured ${followersMap.size} followers via API`);
+                        console.log(`[tiktok-followers] captured ${followersMap.size} followers via API (cursor: ${lastCursor}, hasMore: ${hasMore})`);
                     }
                 } catch {
                     // Non-JSON response, ignore
@@ -1968,148 +1991,131 @@ async function scrapeTikTokFollowers(
             return { user, followers: [], totalFollowers: user?.followerCount || 0, scrapedFollowers: 0, cached: false, durationMs: Date.now() - start, error: 'Could not open followers list' };
         }
 
-        // Auto-scroll the followers modal/page to load more
-        const deadline = Date.now() + timeoutMs;
-        let staleCycles = 0;
-        const MAX_STALE_CYCLES = 12;
-
-        while (Date.now() < deadline && followersMap.size < maxFollowers && staleCycles < MAX_STALE_CYCLES) {
-            const prevSize = followersMap.size;
-
-            // Scroll the modal container — find ANY scrollable element in the overlay
-            const scrollInfo = await page.evaluate(() => {
-                // Strategy: find all elements, sort by depth, and scroll the deepest
-                // scrollable container inside any overlay/dialog/modal
+        // Brief scroll to trigger any additional API calls
+        for (let i = 0; i < 3; i++) {
+            await page.evaluate(() => {
                 const allEls = document.querySelectorAll('*');
-                let bestEl: HTMLElement | null = null;
-                let bestDepth = -1;
-                let info = { found: false, tag: '', className: '', scrollH: 0, clientH: 0 };
-
                 for (const raw of allEls) {
                     const el = raw as HTMLElement;
                     if (!el.scrollHeight || !el.clientHeight) continue;
                     if (el.scrollHeight <= el.clientHeight) continue;
-                    if (el.clientHeight < 200) continue; // too small to be the follower list
-
-                    // Check if this element is inside an overlay
-                    const inOverlay = !!el.closest('[role="dialog"], [role="presentation"], [class*="modal"], [class*="Modal"], [class*="overlay"], [class*="Overlay"], [class*="DivContainer"], [data-e2e*="user-list"], [data-e2e*="follower"]');
-                    const isBody = el.tagName === 'BODY' || el.tagName === 'HTML';
-
-                    if (inOverlay && !isBody) {
-                        // Compute depth
-                        let depth = 0;
-                        let p = el.parentElement;
-                        while (p) { depth++; p = p.parentElement; }
-
-                        if (depth > bestDepth) {
-                            bestDepth = depth;
-                            bestEl = el;
-                            info = { found: true, tag: el.tagName, className: el.className.substring(0, 80), scrollH: el.scrollHeight, clientH: el.clientHeight };
-                        }
+                    if (el.clientHeight < 200) continue;
+                    const inOverlay = !!el.closest('[role="dialog"], [role="presentation"], [class*="modal"], [class*="Modal"], [class*="overlay"], [class*="Overlay"]');
+                    if (inOverlay && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                        el.scrollTop = el.scrollHeight;
+                        break;
                     }
                 }
-
-                if (bestEl) {
-                    bestEl.scrollTop = bestEl.scrollHeight;
-                    return info;
-                }
-
-                // Fallback: scroll the deepest scrollable element on the page
-                for (const raw of allEls) {
-                    const el = raw as HTMLElement;
-                    const isBody = el.tagName === 'BODY' || el.tagName === 'HTML';
-                    if (!isBody && el.scrollHeight > el.clientHeight && el.clientHeight > 300) {
-                        let depth = 0;
-                        let p = el.parentElement;
-                        while (p) { depth++; p = p.parentElement; }
-                        if (depth > bestDepth) {
-                            bestDepth = depth;
-                            bestEl = el;
-                            info = { found: true, tag: el.tagName, className: el.className.substring(0, 80), scrollH: el.scrollHeight, clientH: el.clientHeight };
-                        }
-                    }
-                }
-
-                if (bestEl) {
-                    (bestEl as HTMLElement).scrollTop = (bestEl as HTMLElement).scrollHeight;
-                    return info;
-                }
-
-                // Last resort: page scroll
-                window.scrollBy(0, 3000);
-                return { found: false, tag: 'window', className: '', scrollH: 0, clientH: 0 };
             });
-
-            if (staleCycles === 0 && scrollInfo.found) {
-                console.log(`[tiktok-followers] scrolling: <${scrollInfo.tag}> class="${scrollInfo.className}" (${scrollInfo.scrollH}x${scrollInfo.clientH})`);
-            }
-
-            // Focus the modal and send keyboard events for scrolling
-            try {
-                const dialog = page.locator('[role="dialog"], [role="presentation"], [class*="modal" i], [class*="overlay" i]').first();
-                if (await dialog.isVisible({ timeout: 500 }).catch(() => false)) {
-                    await dialog.click({ position: { x: 200, y: 400 }, force: true }).catch(() => {});
-                }
-            } catch {}
             await page.keyboard.press('End').catch(() => {});
-            await page.keyboard.press('PageDown').catch(() => {});
-            await page.mouse.wheel(0, 2000).catch(() => {});
+            await page.mouse.wheel(0, 3000).catch(() => {});
+            await page.waitForTimeout(2000 + Math.random() * 1000);
+        }
 
-            // Humanized delay between scrolls (2-4 seconds)
-            const delay = 2000 + Math.random() * 2000;
-            await page.waitForTimeout(delay);
+        // ── Phase 2: Direct HTTP Cursor Replay ──────────────────────────────
+        // Use the captured API URL and headers to make direct HTTP requests
+        // with incremented cursor values to paginate through followers
 
-            // Supplementary: try to extract followers from DOM if API interception missed them
-            try {
-                const domFollowers = await page.evaluate(() => {
-                    const items: any[] = [];
-                    const userItems = document.querySelectorAll('[class*="UserItem"], [class*="user-item"], [data-e2e="user-item"]');
-                    userItems.forEach((el) => {
-                        const linkEl = el.querySelector('a[href*="/@"]');
-                        const nameEl = el.querySelector('[class*="UserTitle"], [class*="Nickname"], p, span');
-                        const imgEl = el.querySelector('img');
-                        const href = linkEl?.getAttribute('href') || '';
-                        const handleMatch = href.match(/@([\w.-]+)/);
-                        if (handleMatch && handleMatch[1]) {
-                            items.push({
-                                handle: handleMatch[1],
-                                nickname: nameEl?.textContent?.trim() || '',
-                                avatar: imgEl?.src || '',
-                            });
-                        }
-                    });
-                    return items;
-                });
+        if (capturedApiUrl && hasMore && followersMap.size < maxFollowers) {
+            console.log(`[tiktok-followers] starting cursor replay (have ${followersMap.size}, want ${maxFollowers})`);
 
-                for (const df of domFollowers) {
-                    if (df.handle && !Array.from(followersMap.values()).some(f => f.handle === df.handle)) {
-                        const domEntry: TikTokFollower = {
-                            id: '',
-                            handle: df.handle,
-                            nickname: df.nickname || df.handle,
-                            avatar: df.avatar || '',
-                            bio: '',
-                            verified: false,
-                            followerCount: 0,
-                            followingCount: 0,
-                        };
-                        followersMap.set(`dom-${df.handle}`, domEntry);
-                    }
+            // Extract browser cookies as a cookie header string
+            const browserCookies = await context.cookies();
+            const cookieHeader = browserCookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
+
+            // Parse the captured URL to modify cursor/offset params
+            const baseUrl = new URL(capturedApiUrl);
+
+            let replayStale = 0;
+            const MAX_REPLAY_STALE = 5;
+            let replayCount = 0;
+
+            while (
+                Date.now() < start + timeoutMs &&
+                followersMap.size < maxFollowers &&
+                hasMore &&
+                replayStale < MAX_REPLAY_STALE
+            ) {
+                const prevSize = followersMap.size;
+
+                // Update cursor/offset in URL
+                if (baseUrl.searchParams.has('cursor')) {
+                    baseUrl.searchParams.set('cursor', lastCursor);
+                } else if (baseUrl.searchParams.has('offset')) {
+                    baseUrl.searchParams.set('offset', lastCursor);
+                } else if (baseUrl.searchParams.has('minCursor')) {
+                    baseUrl.searchParams.set('minCursor', lastCursor);
+                } else {
+                    // Try adding cursor param
+                    baseUrl.searchParams.set('cursor', lastCursor);
                 }
-            } catch {
-                // Ignore DOM extraction errors
+
+                // Also set count to max
+                if (baseUrl.searchParams.has('count')) {
+                    baseUrl.searchParams.set('count', '30');
+                }
+
+                try {
+                    const apiResponse = await fetch(baseUrl.toString(), {
+                        method: 'GET',
+                        headers: {
+                            ...capturedApiHeaders,
+                            'cookie': cookieHeader,
+                            'referer': `https://www.tiktok.com/@${handle}`,
+                            'accept': 'application/json, text/plain, */*',
+                        },
+                    });
+
+                    if (!apiResponse.ok) {
+                        console.log(`[tiktok-followers] replay HTTP ${apiResponse.status}`);
+                        replayStale++;
+                        await new Promise(r => setTimeout(r, 3000));
+                        continue;
+                    }
+
+                    const json = await apiResponse.json() as any;
+
+                    // Update pagination
+                    if (json.minCursor !== undefined) lastCursor = String(json.minCursor);
+                    else if (json.cursor !== undefined) lastCursor = String(json.cursor);
+                    else if (json.offset !== undefined) lastCursor = String(Number(lastCursor) + 30);
+                    if (json.hasMore !== undefined) hasMore = !!json.hasMore;
+                    else if (json.has_more !== undefined) hasMore = !!json.has_more;
+                    else hasMore = false;
+
+                    const userList = json.userList || json.users || json.data?.userList || json.data?.users || [];
+                    if (Array.isArray(userList) && userList.length > 0) {
+                        for (const item of userList) {
+                            const userObj = item.user || item;
+                            const parsed = parseFollower(userObj);
+                            if (parsed.id && parsed.handle) {
+                                followersMap.set(parsed.id, parsed);
+                            }
+                        }
+                    }
+
+                    replayCount++;
+                    if (followersMap.size > prevSize) {
+                        replayStale = 0;
+                        console.log(`[tiktok-followers] replay #${replayCount}: ${followersMap.size} followers (cursor: ${lastCursor}, hasMore: ${hasMore})`);
+                    } else {
+                        replayStale++;
+                        console.log(`[tiktok-followers] replay #${replayCount}: stale ${replayStale}/${MAX_REPLAY_STALE}`);
+                    }
+
+                    // Humanized delay between API calls (1-3 seconds)
+                    await new Promise(r => setTimeout(r, 1000 + Math.random() * 2000));
+
+                } catch (e: any) {
+                    console.log(`[tiktok-followers] replay error: ${e.message}`);
+                    replayStale++;
+                    await new Promise(r => setTimeout(r, 3000));
+                }
             }
 
-            if (followersMap.size === prevSize) {
-                staleCycles++;
-                console.log(`[tiktok-followers] stale cycle ${staleCycles}/${MAX_STALE_CYCLES} (${followersMap.size} followers)`);
-                // Extra nudge
-                await page.mouse.wheel(0, 2000).catch(() => {});
-                await page.waitForTimeout(2000);
-            } else {
-                staleCycles = 0;
-                console.log(`[tiktok-followers] progress: ${followersMap.size} followers`);
-            }
+            console.log(`[tiktok-followers] cursor replay done: ${followersMap.size} total followers after ${replayCount} API calls`);
+        } else if (!capturedApiUrl) {
+            console.log(`[tiktok-followers] no API URL captured, cannot do cursor replay`);
         }
 
         await context.close();
