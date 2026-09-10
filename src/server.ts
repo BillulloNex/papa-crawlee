@@ -1991,147 +1991,123 @@ async function scrapeTikTokFollowers(
             return { user, followers: [], totalFollowers: user?.followerCount || 0, scrapedFollowers: 0, cached: false, durationMs: Date.now() - start, error: 'Could not open followers list' };
         }
 
-        // Brief scroll to trigger any additional API calls
-        for (let i = 0; i < 3; i++) {
+        // ── Phase 2: Scroll-based pagination ──────────────────────────────
+        // TikTok uses IntersectionObserver on a sentinel element at the bottom
+        // of the follower list. We need to:
+        // 1. Find the scrollable container inside the modal
+        // 2. Scroll incrementally (not jump to bottom) to trigger IO callbacks
+        // 3. Dispatch real scroll events
+        // 4. Wait for new API responses between scrolls
+
+        const scrollDeadline = Date.now() + timeoutMs;
+        let staleCycles = 0;
+        const MAX_STALE_CYCLES = 10;
+
+        while (Date.now() < scrollDeadline && followersMap.size < maxFollowers && staleCycles < MAX_STALE_CYCLES) {
+            const prevSize = followersMap.size;
+
+            // Scroll the modal with proper event dispatching
+            await page.evaluate(() => {
+                const allEls = document.querySelectorAll('*');
+                let scrollContainer: HTMLElement | null = null;
+                let maxDepth = -1;
+
+                // Find the deepest scrollable element in a modal/overlay
+                for (const raw of allEls) {
+                    const el = raw as HTMLElement;
+                    if (el.tagName === 'BODY' || el.tagName === 'HTML') continue;
+                    if (!el.scrollHeight || !el.clientHeight) continue;
+                    if (el.scrollHeight <= el.clientHeight + 5) continue;
+                    if (el.clientHeight < 200) continue;
+
+                    const inOverlay = !!el.closest(
+                        '[role="dialog"], [role="presentation"], [class*="modal" i], ' +
+                        '[class*="overlay" i], [class*="DivContainer"], [class*="UserList"]'
+                    );
+                    if (!inOverlay) continue;
+
+                    let depth = 0;
+                    let p = el.parentElement;
+                    while (p) { depth++; p = p.parentElement; }
+                    if (depth > maxDepth) {
+                        maxDepth = depth;
+                        scrollContainer = el;
+                    }
+                }
+
+                if (scrollContainer) {
+                    // Scroll incrementally — NOT to the bottom — to simulate real user scrolling
+                    const scrollAmount = Math.min(800, scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight);
+                    if (scrollAmount > 0) {
+                        scrollContainer.scrollTop += scrollAmount;
+                    } else {
+                        // Already at bottom, try a small nudge up then back down
+                        scrollContainer.scrollTop = Math.max(0, scrollContainer.scrollTop - 200);
+                    }
+
+                    // Dispatch real scroll events that IntersectionObserver reacts to
+                    scrollContainer.dispatchEvent(new Event('scroll', { bubbles: true }));
+                    scrollContainer.dispatchEvent(new Event('scrollend', { bubbles: true }));
+
+                    // Try to find and scroll into view any loading/spinner sentinel
+                    const sentinels = scrollContainer.querySelectorAll(
+                        '[class*="loading" i], [class*="spinner" i], [class*="loader" i], ' +
+                        '[class*="DivLoading"], [class*="sentinel"], [data-e2e*="loading"], ' +
+                        'svg[class*="loading" i], div:last-child'
+                    );
+                    for (const sentinel of sentinels) {
+                        if (sentinel instanceof HTMLElement && sentinel.offsetHeight > 0) {
+                            sentinel.scrollIntoView({ behavior: 'instant', block: 'center' });
+                            break;
+                        }
+                    }
+                } else {
+                    // Fallback: page-level scroll
+                    window.scrollBy(0, 800);
+                    window.dispatchEvent(new Event('scroll', { bubbles: true }));
+                }
+            });
+
+            // Also use Playwright's native scroll methods
+            await page.mouse.wheel(0, 600).catch(() => {});
+
+            // Short wait for API response to fire
+            await page.waitForTimeout(1500 + Math.random() * 1500);
+
+            // Second scroll pass — scroll to absolute bottom
             await page.evaluate(() => {
                 const allEls = document.querySelectorAll('*');
                 for (const raw of allEls) {
                     const el = raw as HTMLElement;
+                    if (el.tagName === 'BODY' || el.tagName === 'HTML') continue;
                     if (!el.scrollHeight || !el.clientHeight) continue;
-                    if (el.scrollHeight <= el.clientHeight) continue;
+                    if (el.scrollHeight <= el.clientHeight + 5) continue;
                     if (el.clientHeight < 200) continue;
-                    const inOverlay = !!el.closest('[role="dialog"], [role="presentation"], [class*="modal"], [class*="Modal"], [class*="overlay"], [class*="Overlay"]');
-                    if (inOverlay && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+                    const inOverlay = !!el.closest('[role="dialog"], [role="presentation"], [class*="modal" i], [class*="overlay" i]');
+                    if (inOverlay) {
                         el.scrollTop = el.scrollHeight;
+                        el.dispatchEvent(new Event('scroll', { bubbles: true }));
                         break;
                     }
                 }
             });
+
             await page.keyboard.press('End').catch(() => {});
-            await page.mouse.wheel(0, 3000).catch(() => {});
-            await page.waitForTimeout(2000 + Math.random() * 1000);
+            await page.waitForTimeout(1000 + Math.random() * 1000);
+
+            if (followersMap.size === prevSize) {
+                staleCycles++;
+                if (staleCycles <= 3) {
+                    console.log(`[tiktok-followers] stale cycle ${staleCycles}/${MAX_STALE_CYCLES} (${followersMap.size} followers)`);
+                }
+            } else {
+                staleCycles = 0;
+                console.log(`[tiktok-followers] progress: ${followersMap.size} followers`);
+            }
         }
 
-        // ── Phase 2: In-Browser Cursor Replay ──────────────────────────────
-        // Execute fetch() inside the browser so TikTok's JS generates fresh
-        // X-Bogus / msToken signatures for each paginated request.
-
-        if (capturedApiUrl && hasMore && followersMap.size < maxFollowers) {
-            console.log(`[tiktok-followers] starting in-browser cursor replay (have ${followersMap.size}, want ${maxFollowers})`);
-
-            // Parse the captured URL to build a base for cursor modifications
-            const baseUrl = new URL(capturedApiUrl);
-            // Strip signature params — the browser's JS will regenerate them
-            baseUrl.searchParams.delete('X-Bogus');
-            baseUrl.searchParams.delete('_signature');
-            const baseApiPath = baseUrl.pathname + '?' + baseUrl.searchParams.toString();
-
-            let replayStale = 0;
-            const MAX_REPLAY_STALE = 5;
-            let replayCount = 0;
-
-            while (
-                Date.now() < start + timeoutMs &&
-                followersMap.size < maxFollowers &&
-                hasMore &&
-                replayStale < MAX_REPLAY_STALE
-            ) {
-                const prevSize = followersMap.size;
-
-                // Build the API path with updated cursor
-                const replayUrl = new URL(capturedApiUrl);
-                replayUrl.searchParams.delete('X-Bogus');
-                replayUrl.searchParams.delete('_signature');
-                if (replayUrl.searchParams.has('cursor')) {
-                    replayUrl.searchParams.set('cursor', lastCursor);
-                } else if (replayUrl.searchParams.has('minCursor')) {
-                    replayUrl.searchParams.set('minCursor', lastCursor);
-                } else if (replayUrl.searchParams.has('offset')) {
-                    replayUrl.searchParams.set('offset', lastCursor);
-                } else {
-                    replayUrl.searchParams.set('cursor', lastCursor);
-                }
-                if (replayUrl.searchParams.has('count')) {
-                    replayUrl.searchParams.set('count', '30');
-                }
-
-                const apiPathForBrowser = replayUrl.pathname + '?' + replayUrl.searchParams.toString();
-
-                try {
-                    // Execute fetch inside the browser context
-                    const result = await page.evaluate(async (apiPath: string) => {
-                        try {
-                            const resp = await fetch(apiPath, {
-                                method: 'GET',
-                                credentials: 'include',
-                                headers: {
-                                    'accept': 'application/json, text/plain, */*',
-                                },
-                            });
-                            if (!resp.ok) {
-                                return { error: `HTTP ${resp.status}`, status: resp.status };
-                            }
-                            const text = await resp.text();
-                            try {
-                                return { data: JSON.parse(text) };
-                            } catch {
-                                return { error: 'Invalid JSON', text: text.substring(0, 200) };
-                            }
-                        } catch (e: any) {
-                            return { error: e.message };
-                        }
-                    }, apiPathForBrowser);
-
-                    if (result.error) {
-                        console.log(`[tiktok-followers] replay error: ${result.error}${result.text ? ' — ' + result.text.substring(0, 100) : ''}`);
-                        replayStale++;
-                        await new Promise(r => setTimeout(r, 3000));
-                        continue;
-                    }
-
-                    const json = result.data;
-
-                    // Update pagination
-                    if (json.minCursor !== undefined) lastCursor = String(json.minCursor);
-                    else if (json.cursor !== undefined) lastCursor = String(json.cursor);
-                    else if (json.offset !== undefined) lastCursor = String(Number(lastCursor) + 30);
-                    if (json.hasMore !== undefined) hasMore = !!json.hasMore;
-                    else if (json.has_more !== undefined) hasMore = !!json.has_more;
-                    else hasMore = false;
-
-                    const userList = json.userList || json.users || json.data?.userList || json.data?.users || [];
-                    if (Array.isArray(userList) && userList.length > 0) {
-                        for (const item of userList) {
-                            const userObj = item.user || item;
-                            const parsed = parseFollower(userObj);
-                            if (parsed.id && parsed.handle) {
-                                followersMap.set(parsed.id, parsed);
-                            }
-                        }
-                    }
-
-                    replayCount++;
-                    if (followersMap.size > prevSize) {
-                        replayStale = 0;
-                        console.log(`[tiktok-followers] replay #${replayCount}: ${followersMap.size} followers (cursor: ${lastCursor}, hasMore: ${hasMore})`);
-                    } else {
-                        replayStale++;
-                        console.log(`[tiktok-followers] replay #${replayCount}: stale ${replayStale}/${MAX_REPLAY_STALE} (cursor: ${lastCursor}, hasMore: ${hasMore})`);
-                    }
-
-                    // Humanized delay between API calls (1-3 seconds)
-                    await new Promise(r => setTimeout(r, 1000 + Math.random() * 2000));
-
-                } catch (e: any) {
-                    console.log(`[tiktok-followers] replay error: ${e.message}`);
-                    replayStale++;
-                    await new Promise(r => setTimeout(r, 3000));
-                }
-            }
-
-            console.log(`[tiktok-followers] cursor replay done: ${followersMap.size} total followers after ${replayCount} API calls`);
-        } else if (!capturedApiUrl) {
-            console.log(`[tiktok-followers] no API URL captured, cannot do cursor replay`);
+        if (staleCycles >= MAX_STALE_CYCLES) {
+            console.log(`[tiktok-followers] scroll exhausted after ${MAX_STALE_CYCLES} stale cycles (${followersMap.size} followers)`);
         }
 
         await context.close();
