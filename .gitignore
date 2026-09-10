@@ -1,8 +1,9 @@
-node_modules/
+cred/
 dist/
+node_modules/
 storage/
 test_*.json
 test_*.log
-test_*.txt
 test_*.sh
+test_*.txt
 wait_*.sh

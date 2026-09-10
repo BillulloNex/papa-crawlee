@@ -56,6 +56,17 @@ app.get('/', (_req, res) => {
             </div>
 
             <div class="card">
+                <h3>📸 Instagram Scrapers</h3>
+                <ul>
+                    <li><a href="/instagram"><strong>/instagram</strong></a> — Interactive Web UI for Instagram Scrapers</li>
+                    <li><a href="/instagram/profile?handle=natgeo">/instagram/profile?handle=natgeo</a> — Scrape profile data</li>
+                    <li><a href="/instagram/posts?handle=natgeo&limit=12">/instagram/posts?handle=natgeo&limit=12</a> — Scrape recent posts</li>
+                    <li><a href="/instagram/reels?handle=natgeo&limit=12">/instagram/reels?handle=natgeo&limit=12</a> — Scrape reels</li>
+                    <li>/instagram/comments?url=&lt;POST_URL&gt; — Scrape post comments</li>
+                </ul>
+            </div>
+
+            <div class="card">
                 <h3>General & Smoke Endpoints</h3>
                 <ul>
                     <li><a href="/crawl?url=https://crawlee.dev">/crawl?url=https://crawlee.dev</a> — CheerioCrawler smoke test</li>
@@ -2247,6 +2258,10 @@ app.get('/crawl', async (req, res) => {
         res.status(500).json({ error: e.message, stack: e.stack });
     }
 });
+
+// ── Instagram Scrapers ────────────────────────────────────────────────────────
+app.use(express.json({ limit: '1mb' })); // For POST /instagram/import-cookies
+app.use('/instagram', instagramRouter);
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`[papa] listening on 0.0.0.0:${PORT} -> http://apify.beenex.org`);
