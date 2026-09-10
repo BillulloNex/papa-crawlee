@@ -2012,19 +2012,19 @@ async function scrapeTikTokFollowers(
             await page.waitForTimeout(2000 + Math.random() * 1000);
         }
 
-        // ── Phase 2: Direct HTTP Cursor Replay ──────────────────────────────
-        // Use the captured API URL and headers to make direct HTTP requests
-        // with incremented cursor values to paginate through followers
+        // ── Phase 2: In-Browser Cursor Replay ──────────────────────────────
+        // Execute fetch() inside the browser so TikTok's JS generates fresh
+        // X-Bogus / msToken signatures for each paginated request.
 
         if (capturedApiUrl && hasMore && followersMap.size < maxFollowers) {
-            console.log(`[tiktok-followers] starting cursor replay (have ${followersMap.size}, want ${maxFollowers})`);
+            console.log(`[tiktok-followers] starting in-browser cursor replay (have ${followersMap.size}, want ${maxFollowers})`);
 
-            // Extract browser cookies as a cookie header string
-            const browserCookies = await context.cookies();
-            const cookieHeader = browserCookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
-
-            // Parse the captured URL to modify cursor/offset params
+            // Parse the captured URL to build a base for cursor modifications
             const baseUrl = new URL(capturedApiUrl);
+            // Strip signature params — the browser's JS will regenerate them
+            baseUrl.searchParams.delete('X-Bogus');
+            baseUrl.searchParams.delete('_signature');
+            const baseApiPath = baseUrl.pathname + '?' + baseUrl.searchParams.toString();
 
             let replayStale = 0;
             const MAX_REPLAY_STALE = 5;
@@ -2038,42 +2038,58 @@ async function scrapeTikTokFollowers(
             ) {
                 const prevSize = followersMap.size;
 
-                // Update cursor/offset in URL
-                if (baseUrl.searchParams.has('cursor')) {
-                    baseUrl.searchParams.set('cursor', lastCursor);
-                } else if (baseUrl.searchParams.has('offset')) {
-                    baseUrl.searchParams.set('offset', lastCursor);
-                } else if (baseUrl.searchParams.has('minCursor')) {
-                    baseUrl.searchParams.set('minCursor', lastCursor);
+                // Build the API path with updated cursor
+                const replayUrl = new URL(capturedApiUrl);
+                replayUrl.searchParams.delete('X-Bogus');
+                replayUrl.searchParams.delete('_signature');
+                if (replayUrl.searchParams.has('cursor')) {
+                    replayUrl.searchParams.set('cursor', lastCursor);
+                } else if (replayUrl.searchParams.has('minCursor')) {
+                    replayUrl.searchParams.set('minCursor', lastCursor);
+                } else if (replayUrl.searchParams.has('offset')) {
+                    replayUrl.searchParams.set('offset', lastCursor);
                 } else {
-                    // Try adding cursor param
-                    baseUrl.searchParams.set('cursor', lastCursor);
+                    replayUrl.searchParams.set('cursor', lastCursor);
+                }
+                if (replayUrl.searchParams.has('count')) {
+                    replayUrl.searchParams.set('count', '30');
                 }
 
-                // Also set count to max
-                if (baseUrl.searchParams.has('count')) {
-                    baseUrl.searchParams.set('count', '30');
-                }
+                const apiPathForBrowser = replayUrl.pathname + '?' + replayUrl.searchParams.toString();
 
                 try {
-                    const apiResponse = await fetch(baseUrl.toString(), {
-                        method: 'GET',
-                        headers: {
-                            ...capturedApiHeaders,
-                            'cookie': cookieHeader,
-                            'referer': `https://www.tiktok.com/@${handle}`,
-                            'accept': 'application/json, text/plain, */*',
-                        },
-                    });
+                    // Execute fetch inside the browser context
+                    const result = await page.evaluate(async (apiPath: string) => {
+                        try {
+                            const resp = await fetch(apiPath, {
+                                method: 'GET',
+                                credentials: 'include',
+                                headers: {
+                                    'accept': 'application/json, text/plain, */*',
+                                },
+                            });
+                            if (!resp.ok) {
+                                return { error: `HTTP ${resp.status}`, status: resp.status };
+                            }
+                            const text = await resp.text();
+                            try {
+                                return { data: JSON.parse(text) };
+                            } catch {
+                                return { error: 'Invalid JSON', text: text.substring(0, 200) };
+                            }
+                        } catch (e: any) {
+                            return { error: e.message };
+                        }
+                    }, apiPathForBrowser);
 
-                    if (!apiResponse.ok) {
-                        console.log(`[tiktok-followers] replay HTTP ${apiResponse.status}`);
+                    if (result.error) {
+                        console.log(`[tiktok-followers] replay error: ${result.error}${result.text ? ' — ' + result.text.substring(0, 100) : ''}`);
                         replayStale++;
                         await new Promise(r => setTimeout(r, 3000));
                         continue;
                     }
 
-                    const json = await apiResponse.json() as any;
+                    const json = result.data;
 
                     // Update pagination
                     if (json.minCursor !== undefined) lastCursor = String(json.minCursor);
@@ -2100,7 +2116,7 @@ async function scrapeTikTokFollowers(
                         console.log(`[tiktok-followers] replay #${replayCount}: ${followersMap.size} followers (cursor: ${lastCursor}, hasMore: ${hasMore})`);
                     } else {
                         replayStale++;
-                        console.log(`[tiktok-followers] replay #${replayCount}: stale ${replayStale}/${MAX_REPLAY_STALE}`);
+                        console.log(`[tiktok-followers] replay #${replayCount}: stale ${replayStale}/${MAX_REPLAY_STALE} (cursor: ${lastCursor}, hasMore: ${hasMore})`);
                     }
 
                     // Humanized delay between API calls (1-3 seconds)
