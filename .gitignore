@@ -1,2 +1,8 @@
 node_modules/
 dist/
+storage/
+test_*.json
+test_*.log
+test_*.txt
+test_*.sh
+wait_*.sh

@@ -2,6 +2,8 @@ import express from 'express';
 import { CheerioCrawler, Dataset } from 'crawlee';
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // Register stealth plugin — patches navigator.webdriver, chrome.runtime,
 // plugin enumeration, languages, WebGL vendor, and 10+ other automation signals
@@ -9,6 +11,14 @@ chromium.use(StealthPlugin());
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
+
+// ── Storage paths for cookies & follower cache ───────────────────────────────
+const STORAGE_DIR = path.resolve('./storage');
+const COOKIES_FILE = path.join(STORAGE_DIR, 'tiktok-cookies.json');
+const FOLLOWERS_CACHE_DIR = path.join(STORAGE_DIR, 'followers-cache');
+const FOLLOWERS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+fs.mkdirSync(FOLLOWERS_CACHE_DIR, { recursive: true });
 
 app.get('/', (_req, res) => {
     res.send(`
@@ -36,9 +46,11 @@ app.get('/', (_req, res) => {
             <div class="card">
                 <h3>TikTok Scrapers</h3>
                 <ul>
-                    <li><a href="/tiktok"><strong>/tiktok</strong></a> — Interactive Web UI for TikTok Scrapers (Creator Posts & Community Reposts)</li>
-                    <li><a href="/tiktok/posts?handle=openai&limit=30">/tiktok/posts?handle=openai&limit=30</a> — Scrape categorized creator posts & community reposts</li>
+                    <li><a href="/tiktok"><strong>/tiktok</strong></a> — Interactive Web UI for TikTok Scrapers (Creator Posts &amp; Community Reposts)</li>
+                    <li><a href="/tiktok/posts?handle=openai&limit=30">/tiktok/posts?handle=openai&limit=30</a> — Scrape categorized creator posts &amp; community reposts</li>
                     <li><a href="/tiktok/comments?url=https://www.tiktok.com/@arc_journal/video/7402747839643667743">/tiktok/comments?url=...</a> — Scrape video comments</li>
+                    <li><a href="/tiktok/followers?handle=openai&limit=100">/tiktok/followers?handle=openai&limit=100</a> — Scrape follower list (requires auth)</li>
+                    <li><a href="/tiktok/auth-status">/tiktok/auth-status</a> — Check TikTok login status</li>
                 </ul>
             </div>
 
@@ -191,6 +203,7 @@ app.get('/tiktok', (_req, res) => {
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('postsTab', this)">📹 Creator & Community Posts Scraper</button>
     <button class="tab-btn" onclick="switchTab('commentsTab', this)">💬 Video Comments Scraper</button>
+    <button class="tab-btn" onclick="switchTab('followersTab', this)">👥 Followers Scraper</button>
   </div>
 
   <!-- TAB 1: USER & REPOST SCRAPER -->
@@ -262,11 +275,55 @@ app.get('/tiktok', (_req, res) => {
     <div class="status" id="commentsStatus"></div>
     <div class="results" id="commentsResults"></div>
   </div>
+
+  <!-- TAB 3: FOLLOWERS SCRAPER -->
+  <div id="followersTab" class="tab-content">
+    <div class="card">
+      <h2>Target TikTok Creator Handle</h2>
+      <label>Username or Profile URL</label>
+      <input type="text" id="followerHandle" placeholder="@openai or charlidamelio" value="@openai" />
+    </div>
+
+    <div class="card">
+      <h2>Options</h2>
+      <div class="config-grid">
+        <div class="config-item">
+          <label>Max Followers</label>
+          <input type="number" id="followerLimit" value="5000" min="10" max="10000" />
+          <div class="suffix">followers (TikTok caps at ~5K)</div>
+        </div>
+        <div class="config-item">
+          <label>Timeout</label>
+          <input type="number" id="followerTimeout" value="120" min="30" max="300" />
+          <div class="suffix">seconds</div>
+        </div>
+      </div>
+      <div style="margin-top: 12px;">
+        <label><input type="checkbox" id="followerForce" /> Force refresh (bypass 24h cache)</label>
+      </div>
+    </div>
+
+    <div class="card" style="border-color: #854d0e;">
+      <h2>⚠️ Authentication Required</h2>
+      <p style="font-size: 13px; color: #ca8a04;">Follower scraping requires a logged-in TikTok session. <a href="/tiktok/auth-status" target="_blank" style="color:#3b82f6;">Check auth status</a></p>
+    </div>
+
+    <div class="actions">
+      <button class="btn-run" id="runFollowersBtn" onclick="runFollowersScrape()">
+        <span class="icon">▶</span> Scrape Followers
+      </button>
+    </div>
+
+    <div class="status" id="followersStatus"></div>
+    <div class="results" id="followersResults"></div>
+  </div>
+
 </div>
 
 <script>
 var currentPostsData = null;
 var currentCommentsData = null;
+var currentFollowersData = null;
 var currentPostFilter = 'all';
 
 function switchTab(tabId, btn) {
@@ -608,6 +665,147 @@ function exportCommentsJson() {
   a.download = 'tiktok-comments-' + Date.now() + '.json';
   a.click();
 }
+
+// ── Tab 3: Followers Logic ───────────────────────────────────────────────────
+async function runFollowersScrape() {
+  var handleInput = document.getElementById('followerHandle').value.trim();
+  if (!handleInput) { alert('Please enter a TikTok handle'); return; }
+
+  var limit = parseInt(document.getElementById('followerLimit').value, 10) || 5000;
+  var timeout = (parseInt(document.getElementById('followerTimeout').value, 10) || 120) * 1000;
+  var force = document.getElementById('followerForce').checked;
+
+  var btn = document.getElementById('runFollowersBtn');
+  var statusEl = document.getElementById('followersStatus');
+  var resultsEl = document.getElementById('followersResults');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner">⏳</span> Scraping followers (this takes 1-3 min)...';
+  statusEl.className = 'status active';
+  statusEl.innerHTML = '<span class="spinner">⏳</span> Loading followers for <strong>' + esc(handleInput) + '</strong>... This requires an authenticated session and may take 1-3 minutes.';
+  resultsEl.className = 'results';
+  resultsEl.innerHTML = '';
+
+  try {
+    var url = '/tiktok/followers?handle=' + encodeURIComponent(handleInput) + '&limit=' + limit + '&timeout=' + timeout;
+    if (force) url += '&force=true';
+    var resp = await fetch(url);
+    var data = await resp.json();
+
+    if (data.error) {
+      statusEl.className = 'status active';
+      statusEl.innerHTML = '❌ Error: ' + esc(data.error);
+      btn.disabled = false;
+      btn.innerHTML = '<span class="icon">▶</span> Scrape Followers';
+      return;
+    }
+
+    currentFollowersData = data;
+    renderFollowersUI();
+
+  } catch (e) {
+    statusEl.className = 'status active';
+    statusEl.innerHTML = '❌ Request failed: ' + esc(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="icon">▶</span> Scrape Followers';
+  }
+}
+
+function renderFollowersUI() {
+  var data = currentFollowersData;
+  if (!data) return;
+  var u = data.user || {};
+  var followers = data.followers || [];
+  var statusEl = document.getElementById('followersStatus');
+  var resultsEl = document.getElementById('followersResults');
+
+  var html = '';
+
+  // Profile Banner
+  html += '<div class="profile-banner">';
+  if (u.avatar) html += '<img class="profile-avatar" src="' + esc(u.avatar) + '" onerror="this.style.display=\\'none\\'" />';
+  html += '<div class="profile-info">';
+  html += '<div class="profile-name">' + esc(u.nickname || u.handle || 'Creator') + (u.verified ? ' <span class="verified-badge">✓</span>' : '') + '</div>';
+  html += '<div class="profile-handle">@' + esc(u.handle || '') + '</div>';
+  html += '<div class="profile-stats">';
+  html += '<div class="p-stat">Followers: <span>' + fmt(u.followerCount) + '</span></div>';
+  html += '<div class="p-stat">Following: <span>' + fmt(u.followingCount) + '</span></div>';
+  html += '</div></div></div>';
+
+  // Summary bar
+  html += '<div class="summary-bar">';
+  html += '<div>Scraped <span class="count">' + followers.length + '</span> of ' + fmt(data.totalFollowers || 0) + ' followers';
+  if (data.cached) html += ' <span style="color:#ca8a04;">(cached)</span>';
+  html += ' (' + (data.durationMs / 1000).toFixed(1) + 's)</div>';
+  html += '<div style="display:flex;gap:8px;">';
+  html += '<button class="export-btn" onclick="exportFollowersJson()">Export JSON</button>';
+  html += '<button class="export-btn" onclick="exportFollowersCsv()">Export CSV</button>';
+  html += '</div></div>';
+
+  // Followers list
+  html += '<div class="comments-list">';
+  for (var i = 0; i < followers.length; i++) {
+    var f = followers[i];
+    html += '<div class="comment-item">';
+    html += '<div class="comment-header">';
+    if (f.avatar) html += '<img class="comment-avatar" src="' + esc(f.avatar) + '" onerror="this.style.display=\\'none\\'" />';
+    html += '<span class="comment-author"><a href="https://www.tiktok.com/@' + esc(f.handle) + '" target="_blank" rel="noopener" style="color:#3b82f6;text-decoration:none;">@' + esc(f.handle) + '</a></span>';
+    if (f.verified) html += ' <span class="verified-badge" style="font-size:10px;width:14px;height:14px;">✓</span>';
+    html += '<span class="comment-time">' + esc(f.nickname || '') + '</span>';
+    html += '</div>';
+    if (f.bio) html += '<div class="comment-text" style="font-size:12px;color:#888;">' + esc(f.bio) + '</div>';
+    html += '<div class="comment-footer">';
+    html += '<span>👥 ' + fmt(f.followerCount) + ' followers</span>';
+    html += '<span>➡️ ' + fmt(f.followingCount) + ' following</span>';
+    html += '</div></div>';
+  }
+  html += '</div>';
+
+  statusEl.className = 'status';
+  resultsEl.className = 'results active';
+  resultsEl.innerHTML = html;
+}
+
+function exportFollowersJson() {
+  if (!currentFollowersData) return;
+  var jsonStr = JSON.stringify(currentFollowersData, null, 2);
+  var blob = new Blob([jsonStr], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  var handle = currentFollowersData.user ? currentFollowersData.user.handle : 'user';
+  a.download = 'tiktok-followers-' + handle + '-' + Date.now() + '.json';
+  a.click();
+}
+
+function exportFollowersCsv() {
+  if (!currentFollowersData || !currentFollowersData.followers) return;
+  var followers = currentFollowersData.followers;
+  var headers = ['id', 'handle', 'nickname', 'bio', 'verified', 'followerCount', 'followingCount', 'avatar'];
+  var rows = [headers.join(',')];
+  for (var i = 0; i < followers.length; i++) {
+    var f = followers[i];
+    var row = [
+      '"' + (f.id || '').replace(/"/g, '""') + '"',
+      '"' + (f.handle || '').replace(/"/g, '""') + '"',
+      '"' + (f.nickname || '').replace(/"/g, '""') + '"',
+      '"' + (f.bio || '').replace(/"/g, '""') + '"',
+      f.verified ? 'true' : 'false',
+      f.followerCount || 0,
+      f.followingCount || 0,
+      '"' + (f.avatar || '').replace(/"/g, '""') + '"'
+    ];
+    rows.push(row.join(','));
+  }
+  var csvText = rows.join(String.fromCharCode(10));
+  var blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  var handle = currentFollowersData.user ? currentFollowersData.user.handle : 'user';
+  a.download = 'tiktok-followers-' + handle + '-' + Date.now() + '.csv';
+  a.click();
+}
+
 </script>
 </body>
 </html>`);
@@ -747,6 +945,159 @@ interface TikTokVideo {
     shares: number;
     plays: number;
     createTime: string;
+}
+
+interface TikTokFollower {
+    id: string;
+    handle: string;
+    nickname: string;
+    avatar: string;
+    bio: string;
+    verified: boolean;
+    followerCount: number;
+    followingCount: number;
+}
+
+// ── Cookie Management ─────────────────────────────────────────────────────────
+
+function loadCookies(): any[] | null {
+    try {
+        if (fs.existsSync(COOKIES_FILE)) {
+            const raw = fs.readFileSync(COOKIES_FILE, 'utf-8');
+            const cookies = JSON.parse(raw);
+            if (Array.isArray(cookies) && cookies.length > 0) {
+                console.log(`[tiktok-auth] loaded ${cookies.length} cookies from ${COOKIES_FILE}`);
+                return cookies;
+            }
+        }
+    } catch (e: any) {
+        console.log(`[tiktok-auth] failed to load cookies: ${e.message}`);
+    }
+    return null;
+}
+
+function saveCookies(cookies: any[]): void {
+    try {
+        fs.writeFileSync(COOKIES_FILE, JSON.stringify(cookies, null, 2));
+        console.log(`[tiktok-auth] saved ${cookies.length} cookies to ${COOKIES_FILE}`);
+    } catch (e: any) {
+        console.error(`[tiktok-auth] failed to save cookies: ${e.message}`);
+    }
+}
+
+async function performTikTokLogin(): Promise<{ success: boolean; error?: string }> {
+    const email = process.env.TIKTOK_EMAIL;
+    const password = process.env.TIKTOK_PASSWORD;
+    if (!email || !password) {
+        return { success: false, error: 'TIKTOK_EMAIL and TIKTOK_PASSWORD env vars not set' };
+    }
+
+    let browser;
+    try {
+        console.log(`[tiktok-auth] attempting login with ${email}...`);
+        browser = await chromium.launch({
+            headless: false,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-blink-features=AutomationControlled',
+            ],
+        });
+
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+            locale: 'en-US',
+            timezoneId: 'America/New_York',
+        });
+
+        const page = await context.newPage();
+        await page.goto('https://www.tiktok.com/login/phone-or-email/email', { waitUntil: 'networkidle', timeout: 30000 });
+        await page.waitForTimeout(2000);
+
+        // Fill email
+        const emailInput = page.locator('input[name="username"], input[placeholder*="email" i], input[type="text"]').first();
+        await emailInput.fill(email);
+        await page.waitForTimeout(500);
+
+        // Fill password
+        const passwordInput = page.locator('input[type="password"]').first();
+        await passwordInput.fill(password);
+        await page.waitForTimeout(500);
+
+        // Click login button
+        const loginBtn = page.locator('button[data-e2e="login-button"], button[type="submit"]').first();
+        await loginBtn.click();
+
+        // Wait for navigation — successful login redirects to home or foryou
+        try {
+            await page.waitForURL(/tiktok\.com\/(foryou|$)/, { timeout: 30000 });
+            console.log(`[tiktok-auth] login successful!`);
+        } catch {
+            // Check if we're stuck on CAPTCHA or verification
+            const currentUrl = page.url();
+            if (currentUrl.includes('login') || currentUrl.includes('captcha') || currentUrl.includes('verify')) {
+                await context.close();
+                return { success: false, error: 'Login blocked — CAPTCHA or verification required. Upload cookies manually via POST /tiktok/cookies.' };
+            }
+        }
+
+        // Save cookies
+        const cookies = await context.cookies();
+        saveCookies(cookies);
+        await context.close();
+        return { success: true };
+    } catch (e: any) {
+        console.error(`[tiktok-auth] login failed: ${e.message}`);
+        return { success: false, error: e.message };
+    } finally {
+        if (browser) await browser.close().catch(() => {});
+    }
+}
+
+// ── Follower Cache ────────────────────────────────────────────────────────────
+
+function loadFollowerCache(handle: string): any | null {
+    const cacheFile = path.join(FOLLOWERS_CACHE_DIR, `${handle}.json`);
+    try {
+        if (fs.existsSync(cacheFile)) {
+            const raw = fs.readFileSync(cacheFile, 'utf-8');
+            const cached = JSON.parse(raw);
+            if (cached.cachedAt && Date.now() - cached.cachedAt < FOLLOWERS_CACHE_TTL_MS) {
+                console.log(`[tiktok-followers] cache hit for @${handle} (age: ${Math.round((Date.now() - cached.cachedAt) / 60000)}min)`);
+                return { ...cached.data, cached: true };
+            }
+            console.log(`[tiktok-followers] cache expired for @${handle}`);
+        }
+    } catch (e: any) {
+        console.log(`[tiktok-followers] cache read error: ${e.message}`);
+    }
+    return null;
+}
+
+function saveFollowerCache(handle: string, data: any): void {
+    const cacheFile = path.join(FOLLOWERS_CACHE_DIR, `${handle}.json`);
+    try {
+        fs.writeFileSync(cacheFile, JSON.stringify({ cachedAt: Date.now(), data }, null, 2));
+        console.log(`[tiktok-followers] cached results for @${handle}`);
+    } catch (e: any) {
+        console.error(`[tiktok-followers] cache write error: ${e.message}`);
+    }
+}
+
+function parseFollower(u: any): TikTokFollower {
+    return {
+        id: String(u.id || u.uid || ''),
+        handle: u.uniqueId || u.unique_id || u.uniqueid || '',
+        nickname: u.nickname || '',
+        avatar: u.avatarThumb || u.avatar_thumb?.url_list?.[0] || u.avatarMedium || '',
+        bio: u.signature || '',
+        verified: !!(u.verified || u.customVerify),
+        followerCount: Number(u.followerCount ?? u.follower_count ?? 0),
+        followingCount: Number(u.followingCount ?? u.following_count ?? 0),
+    };
 }
 
 function parseComment(c: any): TikTokComment {
@@ -1399,6 +1750,410 @@ app.get('/tiktok/comments', async (req, res) => {
         });
     } catch (e: any) {
         res.status(500).json({ error: e.message, stack: e.stack });
+    }
+});
+
+// ── Scraper: TikTok Followers ────────────────────────────────────────────────
+
+async function scrapeTikTokFollowers(
+    rawHandle: string,
+    maxFollowers = 5000,
+    timeoutMs = 120000,
+): Promise<{
+    user: TikTokUser | null;
+    followers: TikTokFollower[];
+    totalFollowers: number;
+    scrapedFollowers: number;
+    cached: boolean;
+    durationMs: number;
+    error?: string;
+}> {
+    const start = Date.now();
+    const handle = normalizeTikTokHandle(rawHandle);
+    if (!handle) {
+        return { user: null, followers: [], totalFollowers: 0, scrapedFollowers: 0, cached: false, durationMs: 0, error: 'Invalid or empty TikTok handle' };
+    }
+
+    // Check cache first
+    const cached = loadFollowerCache(handle);
+    if (cached) {
+        return cached;
+    }
+
+    // Load or acquire cookies
+    let cookies = loadCookies();
+    if (!cookies) {
+        console.log(`[tiktok-followers] no cookies found, attempting login...`);
+        const loginResult = await performTikTokLogin();
+        if (!loginResult.success) {
+            return { user: null, followers: [], totalFollowers: 0, scrapedFollowers: 0, cached: false, durationMs: Date.now() - start, error: `Authentication required: ${loginResult.error}` };
+        }
+        cookies = loadCookies();
+        if (!cookies) {
+            return { user: null, followers: [], totalFollowers: 0, scrapedFollowers: 0, cached: false, durationMs: Date.now() - start, error: 'Login succeeded but cookies not saved' };
+        }
+    }
+
+    const targetUrl = `https://www.tiktok.com/@${handle}`;
+    const followersMap = new Map<string, TikTokFollower>();
+    let user: TikTokUser | null = null;
+    let browser;
+
+    try {
+        browser = await chromium.launch({
+            headless: false,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--disable-blink-features=AutomationControlled',
+            ],
+        });
+
+        const context = await browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            viewport: { width: 1280, height: 900 },
+            locale: 'en-US',
+            timezoneId: 'America/New_York',
+            extraHTTPHeaders: {
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
+        });
+
+        // Inject saved cookies for authentication
+        await context.addCookies(cookies);
+
+        const page = await context.newPage();
+
+        // Block heavy media but keep images for avatar loading
+        await page.route('**/*', (route) => {
+            const type = route.request().resourceType();
+            if (['media', 'font', 'stylesheet'].includes(type)) {
+                route.abort().catch(() => {});
+            } else {
+                route.continue().catch(() => {});
+            }
+        });
+
+        // Intercept follower list API responses
+        page.on('response', async (response) => {
+            const url = response.url();
+            // TikTok's follower list endpoint — /api/user/list with scene=67 (followers) or scene=21 (following)
+            if (url.includes('tiktok.com') && (url.includes('/api/user/list') || url.includes('follower_list') || url.includes('user/list'))) {
+                try {
+                    const json = await response.json();
+                    const userList = json.userList || json.users || json.data?.userList || json.data?.users || [];
+                    if (Array.isArray(userList)) {
+                        for (const item of userList) {
+                            const userObj = item.user || item;
+                            const parsed = parseFollower(userObj);
+                            if (parsed.id && parsed.handle) {
+                                followersMap.set(parsed.id, parsed);
+                            }
+                        }
+                        console.log(`[tiktok-followers] captured ${followersMap.size} followers via API`);
+                    }
+                } catch {
+                    // Non-JSON response, ignore
+                }
+            }
+        });
+
+        console.log(`[tiktok-followers] navigating to ${targetUrl}`);
+        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 });
+
+        // Extract user profile from SSR rehydration data (same logic as posts scraper)
+        try {
+            const rehydrationData = await page.evaluate(() => {
+                const script = document.querySelector('#__UNIVERSAL_DATA_FOR_REHYDRATION__');
+                if (script?.textContent) {
+                    try { return JSON.parse(script.textContent); } catch { return null; }
+                }
+                const sigi = (window as any)['SIGI_STATE'];
+                if (sigi) return { SIGI_STATE: sigi };
+                return null;
+            });
+
+            if (rehydrationData) {
+                const scope = rehydrationData['__DEFAULT_SCOPE__'] || {};
+                const userDetail = scope['webapp.user-detail'] || scope['webapp.user_detail'] || {};
+                const userInfo = userDetail.userInfo || {};
+                const rawUser = userInfo.user || {};
+                const rawStats = userInfo.stats || {};
+
+                if (rawUser.id || rawUser.uniqueId) {
+                    user = {
+                        id: String(rawUser.id || ''),
+                        handle: rawUser.uniqueId || handle,
+                        nickname: rawUser.nickname || '',
+                        avatar: rawUser.avatarLarger || rawUser.avatarMedium || rawUser.avatarThumb || '',
+                        bio: rawUser.signature || '',
+                        bioLink: rawUser.bioLink?.link || '',
+                        verified: !!rawUser.verified,
+                        followerCount: Number(rawStats.followerCount || 0),
+                        followingCount: Number(rawStats.followingCount || 0),
+                        heartCount: Number(rawStats.heartCount || rawStats.heart || 0),
+                        videoCount: Number(rawStats.videoCount || 0),
+                    };
+                    console.log(`[tiktok-followers] extracted user @${user.handle} (${user.followerCount} followers)`);
+                }
+            }
+        } catch (e: any) {
+            console.log(`[tiktok-followers] rehydration parse failed: ${e.message}`);
+        }
+
+        // Check if logged in — if redirected to login page, cookies are expired
+        const currentUrl = page.url();
+        if (currentUrl.includes('/login')) {
+            console.log(`[tiktok-followers] session expired, attempting re-login...`);
+            await context.close();
+            await browser.close().catch(() => {});
+            // Clear stale cookies and retry login
+            try { fs.unlinkSync(COOKIES_FILE); } catch {}
+            const loginResult = await performTikTokLogin();
+            if (!loginResult.success) {
+                return { user, followers: [], totalFollowers: user?.followerCount || 0, scrapedFollowers: 0, cached: false, durationMs: Date.now() - start, error: `Session expired, re-login failed: ${loginResult.error}` };
+            }
+            // Recursive retry with fresh cookies (just once)
+            return scrapeTikTokFollowers(rawHandle, maxFollowers, timeoutMs - (Date.now() - start));
+        }
+
+        // Click the followers count to open the followers modal
+        await page.waitForTimeout(2000);
+        let modalOpened = false;
+        try {
+            // Try multiple selectors for the follower count link
+            const followerSelectors = [
+                '[data-e2e="followers-count"]',
+                'a[href*="/followers"]',
+                'strong[data-e2e="followers-count"]',
+            ];
+            for (const sel of followerSelectors) {
+                const el = page.locator(sel).first();
+                if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+                    await el.click();
+                    await page.waitForTimeout(3000);
+                    modalOpened = true;
+                    console.log(`[tiktok-followers] opened followers modal via ${sel}`);
+                    break;
+                }
+            }
+
+            // Fallback: navigate directly to followers URL
+            if (!modalOpened) {
+                console.log(`[tiktok-followers] modal click failed, navigating to followers URL...`);
+                await page.goto(`https://www.tiktok.com/@${handle}/followers`, { waitUntil: 'networkidle', timeout: 20000 });
+                await page.waitForTimeout(3000);
+                modalOpened = true;
+            }
+        } catch (e: any) {
+            console.log(`[tiktok-followers] failed to open followers: ${e.message}`);
+        }
+
+        if (!modalOpened) {
+            await context.close();
+            return { user, followers: [], totalFollowers: user?.followerCount || 0, scrapedFollowers: 0, cached: false, durationMs: Date.now() - start, error: 'Could not open followers list' };
+        }
+
+        // Auto-scroll the followers modal/page to load more
+        const deadline = Date.now() + timeoutMs;
+        let staleCycles = 0;
+        const MAX_STALE_CYCLES = 8;
+
+        while (Date.now() < deadline && followersMap.size < maxFollowers && staleCycles < MAX_STALE_CYCLES) {
+            const prevSize = followersMap.size;
+
+            // Scroll the modal container or the page
+            await page.evaluate(() => {
+                // Try scrolling modal containers
+                const modalCandidates = [
+                    ...document.querySelectorAll('[class*="DivUserListContainer"]'),
+                    ...document.querySelectorAll('[class*="UserListContainer"]'),
+                    ...document.querySelectorAll('[class*="follower"]'),
+                    ...document.querySelectorAll('[role="dialog"] [class*="scroll"]'),
+                    ...document.querySelectorAll('[role="dialog"] > div > div'),
+                ];
+                let scrolled = false;
+                for (const el of modalCandidates) {
+                    if (el instanceof HTMLElement && el.scrollHeight > el.clientHeight && el.clientHeight > 100) {
+                        el.scrollTop += 1200;
+                        scrolled = true;
+                        break;
+                    }
+                }
+                if (!scrolled) {
+                    window.scrollBy(0, 1200);
+                }
+            });
+
+            // Also try keyboard scrolling and mouse wheel
+            await page.mouse.wheel(0, 1000).catch(() => {});
+            await page.keyboard.press('PageDown').catch(() => {});
+
+            // Humanized delay between scrolls (2-5 seconds)
+            const delay = 2000 + Math.random() * 3000;
+            await page.waitForTimeout(delay);
+
+            // Supplementary: try to extract followers from DOM if API interception missed them
+            try {
+                const domFollowers = await page.evaluate(() => {
+                    const items: any[] = [];
+                    const userItems = document.querySelectorAll('[class*="UserItem"], [class*="user-item"], [data-e2e="user-item"]');
+                    userItems.forEach((el) => {
+                        const linkEl = el.querySelector('a[href*="/@"]');
+                        const nameEl = el.querySelector('[class*="UserTitle"], [class*="Nickname"], p, span');
+                        const imgEl = el.querySelector('img');
+                        const href = linkEl?.getAttribute('href') || '';
+                        const handleMatch = href.match(/@([\w.-]+)/);
+                        if (handleMatch && handleMatch[1]) {
+                            items.push({
+                                handle: handleMatch[1],
+                                nickname: nameEl?.textContent?.trim() || '',
+                                avatar: imgEl?.src || '',
+                            });
+                        }
+                    });
+                    return items;
+                });
+
+                for (const df of domFollowers) {
+                    if (df.handle && !Array.from(followersMap.values()).some(f => f.handle === df.handle)) {
+                        const domEntry: TikTokFollower = {
+                            id: '',
+                            handle: df.handle,
+                            nickname: df.nickname || df.handle,
+                            avatar: df.avatar || '',
+                            bio: '',
+                            verified: false,
+                            followerCount: 0,
+                            followingCount: 0,
+                        };
+                        followersMap.set(`dom-${df.handle}`, domEntry);
+                    }
+                }
+            } catch {
+                // Ignore DOM extraction errors
+            }
+
+            if (followersMap.size === prevSize) {
+                staleCycles++;
+                console.log(`[tiktok-followers] stale cycle ${staleCycles}/${MAX_STALE_CYCLES} (${followersMap.size} followers)`);
+                // Extra nudge
+                await page.mouse.wheel(0, 2000).catch(() => {});
+                await page.waitForTimeout(2000);
+            } else {
+                staleCycles = 0;
+                console.log(`[tiktok-followers] progress: ${followersMap.size} followers`);
+            }
+        }
+
+        await context.close();
+    } catch (e: any) {
+        console.error(`[tiktok-followers] error: ${e.message}`);
+        const partialResult = {
+            user,
+            followers: Array.from(followersMap.values()),
+            totalFollowers: user?.followerCount || 0,
+            scrapedFollowers: followersMap.size,
+            cached: false,
+            durationMs: Date.now() - start,
+            error: e.message,
+        };
+        if (followersMap.size > 0) saveFollowerCache(handle, partialResult);
+        return partialResult;
+    } finally {
+        if (browser) await browser.close().catch(() => {});
+    }
+
+    const result = {
+        user,
+        followers: Array.from(followersMap.values()),
+        totalFollowers: user?.followerCount || 0,
+        scrapedFollowers: followersMap.size,
+        cached: false,
+        durationMs: Date.now() - start,
+    };
+
+    // Cache the results
+    if (followersMap.size > 0) {
+        saveFollowerCache(handle, result);
+    }
+
+    return result;
+}
+
+// ── API: TikTok Followers ────────────────────────────────────────────────────
+
+app.get('/tiktok/followers', async (req, res) => {
+    const handle = (req.query.handle as string) || (req.query.user as string);
+    if (!handle) {
+        return res.status(400).json({
+            error: 'Missing ?handle= parameter. Provide a TikTok handle e.g. /tiktok/followers?handle=openai',
+        });
+    }
+
+    const limit = Math.min(parseInt((req.query.limit as string) || '5000', 10), 10000);
+    const timeout = Math.min(parseInt((req.query.timeout as string) || '120000', 10), 300000);
+    const force = req.query.force === 'true' || req.query.force === '1';
+
+    // If force=true, bypass cache
+    if (force) {
+        const normalizedHandle = normalizeTikTokHandle(handle);
+        const cacheFile = path.join(FOLLOWERS_CACHE_DIR, `${normalizedHandle}.json`);
+        try { fs.unlinkSync(cacheFile); } catch {}
+    }
+
+    try {
+        console.log(`[tiktok-followers] request for @${handle} (limit: ${limit}, force: ${force})`);
+        const result = await scrapeTikTokFollowers(handle, limit, timeout);
+        res.json(result);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message, stack: e.stack });
+    }
+});
+
+// ── Auth: TikTok Login & Cookie Management ───────────────────────────────────
+
+app.get('/tiktok/login', async (_req, res) => {
+    try {
+        const result = await performTikTokLogin();
+        if (result.success) {
+            res.json({ status: 'ok', message: 'Login successful, cookies saved.' });
+        } else {
+            res.status(401).json({ status: 'error', error: result.error });
+        }
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/tiktok/cookies', express.json({ limit: '1mb' }), (req, res) => {
+    const cookies = req.body;
+    if (!Array.isArray(cookies) || cookies.length === 0) {
+        return res.status(400).json({ error: 'Body must be a JSON array of cookie objects. Export from browser DevTools > Application > Cookies.' });
+    }
+    saveCookies(cookies);
+    res.json({ status: 'ok', message: `Saved ${cookies.length} cookies.` });
+});
+
+app.get('/tiktok/auth-status', (_req, res) => {
+    const cookies = loadCookies();
+    if (cookies) {
+        const sessionCookie = cookies.find((c: any) => c.name === 'sessionid' || c.name === 'sid_tt' || c.name === 'passport_csrf_token');
+        res.json({
+            authenticated: true,
+            cookieCount: cookies.length,
+            hasSessionCookie: !!sessionCookie,
+            cookieFile: COOKIES_FILE,
+        });
+    } else {
+        res.json({
+            authenticated: false,
+            cookieCount: 0,
+            hasSessionCookie: false,
+            hint: 'POST cookies to /tiktok/cookies or trigger GET /tiktok/login',
+        });
     }
 });
 
