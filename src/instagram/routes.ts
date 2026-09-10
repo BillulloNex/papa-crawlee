@@ -5,6 +5,7 @@ import { scrapeProfile } from './profile.js';
 import { scrapePosts } from './posts.js';
 import { scrapeReels } from './reels.js';
 import { scrapeComments } from './comments.js';
+import { scrapeFollowers } from './followers.js';
 import { importCookies } from './auth.js';
 import { getInstagramUI } from './ui.js';
 
@@ -137,6 +138,38 @@ instagramRouter.get('/comments', async (req, res): Promise<void> => {
             success: false,
             error: (err as Error).message,
             url,
+        });
+    }
+});
+
+// Followers endpoint
+instagramRouter.get('/followers', async (req, res): Promise<void> => {
+    const handle = (req.query.handle as string)?.trim();
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 1000);
+
+    if (!handle) {
+        res.status(400).json({ error: 'Missing required query param: handle' });
+        return;
+    }
+
+    try {
+        console.log(`[api] GET /instagram/followers?handle=${handle}&limit=${limit}`);
+        const startTime = Date.now();
+        const result = await scrapeFollowers(handle, limit);
+        const elapsed = Date.now() - startTime;
+
+        res.json({
+            success: true,
+            elapsed: `${elapsed}ms`,
+            ...result,
+            count: result.followers.length,
+        });
+    } catch (err) {
+        console.error(`[api] /instagram/followers error:`, err);
+        res.status(500).json({
+            success: false,
+            error: (err as Error).message,
+            handle,
         });
     }
 });
